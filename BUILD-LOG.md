@@ -7,7 +7,7 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 > If a term is new, look it up in the [Glossary](#12-glossary). Status markers:
 > ✅ done · 🔄 in progress · ⏳ not started.
 
-**Last updated:** 2026-10-04 · **Current position:** Step 1, Item 7 (`compose.yaml`). Item 6 (`application.yml`) is ✅ done: JPA `validate`, `open-in-view: false`, only `health` exposed.
+**Last updated:** 2026-10-05 · **Current position:** Step 2 ✅ code complete (not yet committed). Next: Step 3, `customer`.
 
 ---
 
@@ -301,8 +301,8 @@ timeouts, failures and reversals on demand.
 
 | Step | What | Status |
 |---|---|---|
-| 1 | Project skeleton (build, config, database, foundation tests) | 🔄 |
-| 2 | `shared`: `Money`, error model, auditing, correlation IDs | ⏳ |
+| 1 | Project skeleton (build, config, database, foundation tests) | ✅ |
+| 2 | `shared`: `Money`, error model, auditing, correlation IDs | ✅ (test debt open) |
 | 3 | `customer`: entity, KYC tier, API | ⏳ |
 | 4 | `account`: NUBAN numbers, balances, system accounts | ⏳ |
 | 5 | `ledger`: journal entries and lines, balanced-only posting | ⏳ |
@@ -541,7 +541,15 @@ file in `shared`.
   Phase 1 (`fx`, `notification`, `remittance`). A bare `package` line does nothing, so the annotation
   and import are what make the file work. The three extra files were deleted.
 
-### Items 6 to 11 ⏳ Still to do in Step 1
+### Items 6 to 11 ✅ Completed
+
+**Outcome of Step 1:** `mvnw verify` green (2 tests), the app starts against a Postgres container,
+Flyway applies `V1__init.sql` (which creates Modulith's `event_publication` table), `/actuator/health`
+reports UP, and the first Git commit (`cbdee06`) is made. Compose maps the database to host port
+**5433** (see problem 9 below). Graceful shutdown is on by default in Boot 4.1.1
+(`server.shutdown=graceful`, 30 s timeout per phase).
+
+The original plan for these items is kept below as a record of the reasoning.
 
 | Item | What | Why |
 |---|---|---|
@@ -572,6 +580,95 @@ file in `shared`.
   and verify it against the Modulith version.
 - **Git hygiene.** `.gitignore` gains `.env` and `HELP.md`. Read `git status` *before*
   `git add .` to be sure no `target/`, IDE files or secrets sneak in.
+
+---
+
+## 7b. Step 2 in detail: the `shared` module 🔄
+
+`shared` is the building's utility room: things every module needs and that know nothing about
+customers, accounts or transfers. Sub-steps: **2.1** `Money` · **2.2** error vocabulary ·
+**2.3** global error handler · **2.4** auditing fields · **2.5** request-ID (correlation) filter.
+
+### 2.1 `Money` ✅ (tests incomplete, see open item)
+
+`Money` is an immutable `record` of `long minorUnits` (kobo) and a `java.util.Currency`.
+It can be negative (ledger lines are signed), refuses to mix currencies, and uses
+`Math.addExact` / `subtractExact` / `negateExact` so overflow throws instead of silently wrapping.
+
+> **Analogy:** a cheque. An amount and a currency, sealed together. Corrections are a new cheque,
+> never an edit.
+
+**Review findings, both fixed:** the null-check message said "must be null" (it must say
+"must not be null"), and a method was named `Zero` instead of `zero` (Java methods start lowercase).
+
+**Open item:** `MoneyTest` has 9 tests. Still to write: normal `negate`, the sign checks,
+equality and `hashCode`, `compareTo` ordering, currency mismatch for `subtract` and `compareTo`,
+and immutability of the originals after `add` and `subtract`.
+
+### 2.2 Error vocabulary ✅
+
+`ErrorCode` (enum of stable machine-readable codes, each tied to an HTTP status),
+`PayBridgeException` (base `RuntimeException` carrying an `ErrorCode`), and `CurrencyMismatchException`
+re-parented under it. Codes so far: `VALIDATION_FAILED`, `CURRENCY_MISMATCH`, `RESOURCE_NOT_FOUND`,
+`CONFLICT`, `INTERNAL_ERROR`. New codes are added only when a module needs them.
+
+> **Analogy:** a hospital wristband. The colour tag (code) is for machines, the written note
+> (message) is for people. Fixing a typo in the note must never break a client, so clients read the code.
+
+Tests: `ErrorCodeTest` (10), `PayBridgeExceptionTest` (3), `CurrencyMismatchExceptionTest` (4).
+A test caught a real inconsistency here: the message began with a lowercase `c` in code but the test
+expected a capital. Fixed in code.
+
+### 2.3 Global error handler ✅
+
+`GlobalExceptionHandler` (`@RestControllerAdvice`, extends `ResponseEntityExceptionHandler`) turns every
+`PayBridgeException` into an RFC 9457 `ProblemDetail` with the HTTP status from its code and a `code`
+property, and turns anything unexpected into a generic 500 whose real cause is only logged.
+Tested with standalone MockMvc (3 tests), including a test that a secret in an exception message never
+reaches the caller. Field-level validation errors are deferred to Step 3, when `customer` gets its first
+validated request.
+
+### 2.4 Auditing fields ✅
+
+`AuditableEntity` (`@MappedSuperclass` with `createdAt` and `updatedAt`, stamped automatically by Spring
+Data) in `shared/audit`, and `JpaAuditingConfig` in `shared/config` which switches auditing on and supplies
+a `Clock` bean. Timestamps use `Instant` (one exact moment, no zone ambiguity). The stamp reads from the
+injected `Clock`, so tests can freeze time later. No `createdBy` yet: that needs to know *who* is calling,
+which arrives with API-key authentication in Step 13. Nothing is stamped until the first entity extends the
+class (`Customer`, Step 3), whose migration must add `created_at` and `updated_at` as
+`TIMESTAMP WITH TIME ZONE NOT NULL`.
+
+> **Analogy:** a date stamp built into the filing cabinet, so no clerk can forget to date a paper.
+
+### 2.5 Request-ID filter ✅
+
+`RequestIdFilter` gives every request a "luggage tag": the caller's `X-Request-Id` if it matches
+`[A-Za-z0-9._-]{1,64}` (anything else could be used for log injection), otherwise a random UUID. The ID goes
+into the SLF4J MDC (a per-thread notepad), is echoed in the response header, and is removed in `finally`
+because server threads are reused. `logging.pattern.correlation: "[%X{requestId:-}] "` prints it on log lines.
+
+**Verified live** (real app, real Tomcat): no header gives a fresh UUID back; `my-test-123` is echoed; an ID
+containing spaces is replaced; the header is present on a 404 too.
+
+**Problem found by running the app, not by the tests:** with `@Component` the filter crashed startup
+(`NullPointerException ... "this.logger" is null`). Cause: Modulith's observability support
+(`ModuleObservabilityBeanPostProcessor`) wraps beans in module packages in CGLIB proxies, and a proxy of
+`GenericFilterBean` skips its constructor while its `init` method is `final`. Fix: do not make the filter a
+bean. Register it with a `FilterRegistrationBean` (`RequestIdFilterConfig`). **Rule for later:** any servlet
+filter in a module (e.g. the API-key filter, Step 13) is registered this way.
+`PayBridgeApplicationTests` missed it because it uses a mock web environment and never starts Tomcat.
+
+**Still to do:** `handlePayBridgeException` does not yet call `addRequestId(problem)`, so business-error
+responses lack the `requestId` field. Also unproven: that the ID appears on log lines *during* a request
+(the app logs nothing at INFO per request; it shows as `[]` at startup). It will be proven by the first
+endpoint that logs.
+
+### Testing decision: tests deferred from here on (recorded 2026-10-05)
+
+To move faster, we agreed to **stop writing new tests for now** and only check that new code compiles and
+that the existing 31 tests still pass. **This is test debt.** It must be paid back before Step 6 (concurrency)
+and Step 7 (transfers), where money correctness depends on it. Debt so far: the missing `MoneyTest` groups
+above, and tests for everything from 2.4 onward.
 
 ---
 
