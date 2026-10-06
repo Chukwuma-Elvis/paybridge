@@ -7,7 +7,7 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 > If a term is new, look it up in the [Glossary](#12-glossary). Status markers:
 > ✅ done · 🔄 in progress · ⏳ not started.
 
-**Last updated:** 2026-10-05 · **Current position:** Step 2 ✅ code complete (not yet committed). Next: Step 3, `customer`.
+**Last updated:** 2026-10-06 · **Current position:** Steps 1 to 10 are built and verified (208 automated tests, plus a live end-to-end run). **Next: Step 11, the real Paystack gateway (guided).**
 
 ---
 
@@ -303,14 +303,14 @@ timeouts, failures and reversals on demand.
 |---|---|---|
 | 1 | Project skeleton (build, config, database, foundation tests) | ✅ |
 | 2 | `shared`: `Money`, error model, auditing, correlation IDs | ✅ (test debt open) |
-| 3 | `customer`: entity, KYC tier, API | ⏳ |
-| 4 | `account`: NUBAN numbers, balances, system accounts | ⏳ |
-| 5 | `ledger`: journal entries and lines, balanced-only posting | ⏳ |
-| 6 | Concurrency hardening (parallel-load tests) | ⏳ |
-| 7 | `transfer` (internal): validation, idempotency, endpoints | ⏳ |
-| 8 | `compliance` (thin): per-tier limits | ⏳ |
-| 9 | `notification` (thin): event listeners | ⏳ |
-| 10 | `transfer` (external) with a fake gateway, outbox, fees, reversals | ⏳ |
+| 3 | `customer`: entity, KYC tier, API | ✅ |
+| 4 | `account`: NUBAN numbers, balances, system accounts | ✅ |
+| 5 | `ledger`: journal entries and lines, balanced-only posting | ✅ |
+| 6 | Concurrency hardening (parallel-load tests) | ✅ |
+| 7 | `transfer` (internal): validation, idempotency, endpoints | ✅ |
+| 8 | `compliance` (thin): per-tier limits | ✅ |
+| 9 | `notification` (thin): event listeners | ✅ |
+| 10 | `transfer` (external) with a fake gateway, outbox, fees, reversals | ✅ |
 | 11 | Paystack client, tested with WireMock | ⏳ |
 | 12 | Webhooks and reconciliation | ⏳ |
 | 13 | Hardening: API-key authentication, rate limiting, logging, metrics | ⏳ |
@@ -801,3 +801,56 @@ data; failure cases come first for money-critical code.
 
 *This document is updated as we complete each item. If a decision changes, we record the
 change and the reason, and never silently overwrite history.*
+
+---
+
+## 13. Steps 3 to 10: built in one pass (2026-10-06)
+
+To save time, Claude wrote Steps 3 to 10 in one go, checking each step with tests and, at the end, a live run of the real app.
+A frozen snapshot of the hand-built work (Steps 1 to 2 and the start of 3) is in the sibling folder `paybridge(learning copy)`.
+
+**Result:** 208 automated tests pass. A live run against a throwaway Postgres confirmed: customer and account creation, funding,
+an internal transfer and its idempotent replay, validation errors, saved payees, an external transfer that the timers finished on
+their own (success), one the fake bank refused (automatic refund), SMS/email alerts, and the limits endpoint.
+
+### What exists now
+
+| Step | Built | Key decisions and why |
+|---|---|---|
+| 3 `customer` | Entity, `CustomerApi`, register / get / change KYC tier, field-level validation errors | `KycTier` and `CustomerStatus` live in `api/` because other modules read them. Emails stored lower-case. No BVN/NIN stored (sensitive). |
+| 4 `account` | NUBAN accounts (9-digit serial from a sequence plus check digit), system accounts (FUNDING_SOURCE, SUSPENSE, PAYSTACK_SETTLEMENT, FEES), balance cache | Customer balance can never be negative: enforced in code AND by a database CHECK. `lockAccounts` always locks in id order. |
+| 5 `ledger` | Journal entries and lines, `post` / `reverse` / statement | Posting checks everything before changing anything. The same (type, reference) never posts twice. **Postgres triggers** reject unbalanced entries at commit and any UPDATE/DELETE of ledger rows. |
+| 6 concurrency | Parallel-load tests | 40 simultaneous transfers against a NGN 100 balance: exactly 33 succeed. 200 opposite-direction transfers: no deadlock. |
+| 7 `transfer` internal | State machine, `Idempotency-Key`, `TransferCompleted` event, endpoints, dev-only funding endpoint | Key claimed with `INSERT ... ON CONFLICT DO NOTHING`, so simultaneous duplicates cannot both win. A refused request rolls back everything, including the key. |
+| 8 `compliance` | Per-transaction and daily limits by tier, atomic reserve/release | One SQL upsert with a WHERE clause makes "check and count" a single atomic step. Days are Africa/Lagos days. |
+| 9 `notification` | Listeners for completed / failed / reversed transfers, alert history endpoint | `@ApplicationModuleListener`: runs after commit, event kept on record until handled. Unique constraint stops duplicate alerts on redelivery. |
+| 10 `transfer` external | Payees (name enquiry), fee bands, hold in SUSPENSE, outbox, dispatcher, reconciler, reversal handling, `TransferGateway` + simulated bank | See below. |
+
+### How an external transfer works (the part to understand)
+
+1. **Accept (one fast transaction, no outside call):** customer is debited amount + fee into SUSPENSE ("in transit shelf"), transfer saved as PENDING, an outbox row is written.
+2. **Dispatcher (no transaction open):** marks PROCESSING, calls the gateway. SUCCESS/FAILED are applied at once. PENDING is recorded and left for later.
+   **A timeout is never a failure**: it means unknown, so the money stays held and the call is retried (the reference makes the retry safe).
+3. **Reconciler:** asks the provider what happened to quiet transfers. SUCCESS pays out (SUSPENSE to PAYSTACK_SETTLEMENT, fee to FEES);
+   FAILED reverses the hold; "never heard of it" means it was never sent, so refund; PENDING means keep waiting.
+4. **Reversal after success:** both the settlement and the hold are reversed, so the customer gets amount + fee back.
+5. Every provider answer is applied **idempotently**, so a repeated webhook or poll changes nothing. A late "success" for an already-refunded transfer
+   raises a "MANUAL REVIEW" error and moves no money.
+
+The simulated bank picks its behaviour from the last four digits of the payee's account number (1111 refuse, 2222 timeout before receipt,
+3333 instant success, 4444 pending then fail, 5555 timeout after receipt, 6666 pending forever, 7777 success then reversed, 9999 unresolvable).
+
+### Things to know
+
+- **Placeholders to check before trusting:** the fee bands (NGN 10 / 25 / 50) and the per-tier limits are made-up figures in `application.yml`;
+  the bank code `999` is fictional; Paystack's real fees and minimums must be checked.
+- **Dev-only endpoint:** `POST /api/dev/accounts/{id}/fund` puts test money in an account. Switch off with `paybridge.dev.funding-enabled=false`.
+- **No authentication yet** (Step 13).
+- **Known small gaps:** the request id is not copied onto the async notification threads (their log lines show `[]`); Spring logs a harmless
+  warning that Modulith's observability wraps `GlobalExceptionHandler` in a proxy; `MoneyTest` still has the gaps listed in section 7b.
+- **Tests:** a `test` profile (`src/test/resources/application-test.yml`) switches the dispatcher and reconciler timers off so tests drive them step by step.
+- **Lesson repeated:** `PayBridgeApplicationTests` and the other tests use a mock web layer. Starting the real app caught nothing new this time, which is the point of doing it.
+
+### Next: Step 11 (guided)
+
+Write `PaystackTransferGateway` implementing `TransferGateway`, selected with `paybridge.gateway=paystack`. See the Step 11 guide in the chat history.

@@ -1,0 +1,11 @@
+# Layered on top of application.yml by @ActiveProfiles("test").
+# The background timers are switched OFF so each test can run the dispatcher and the reconciler itself,
+# one step at a time, and know exactly what happened.
+paybridge:
+  dispatcher:
+    enabled: false
+    max-attempts: 3
+    base-delay: 0s
+  reconciler:
+    enabled: false
+    min-age: 0s
