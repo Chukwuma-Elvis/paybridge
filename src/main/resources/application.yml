@@ -17,7 +17,8 @@ management:
 
 logging:
   pattern:
-    correlation: "[%X{requestId:-}] "
+    # Log4j2 syntax: the Logback form %X{requestId:-} makes Log4j2 look for a key literally named "requestId:-".
+    correlation: "[%X{requestId}] "
 
 paybridge:
   dev:
