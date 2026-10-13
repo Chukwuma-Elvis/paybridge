@@ -7,7 +7,7 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 > If a term is new, look it up in the [Glossary](#12-glossary). Status markers:
 > ✅ done · 🔄 in progress · ⏳ not started.
 
-**Last updated:** 2026-10-06 · **Current position:** Steps 1 to 10 are built and verified (208 automated tests, plus a live end-to-end run). **Next: Step 11, the real Paystack gateway (guided).**
+**Last updated:** 2026-10-13 · **Current position:** Steps 1 to 10 are built and verified (217 automated tests, plus live end-to-end runs), and every request is now access-logged with its request id. **Step 11 (the real Paystack gateway) is on hold** while the Paystack account is sorted out; see [section 15](#15-status-and-what-is-left-2026-10-13) for what is left.
 
 ---
 
@@ -25,6 +25,10 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 10. [Testing strategy](#10-testing-strategy)
 11. [What is next](#11-what-is-next)
 12. [Glossary](#12-glossary)
+13. [Steps 3 to 10: built in one pass](#13-steps-3-to-10-built-in-one-pass-2026-10-06)
+14. [Request logging and the request-id fix](#14-request-logging-and-the-request-id-fix-2026-10-13)
+15. [Status and what is left](#15-status-and-what-is-left-2026-10-13)
+16. [Payment providers other than Paystack](#16-payment-providers-other-than-paystack-researched-2026-10-13)
 
 ---
 
@@ -302,7 +306,7 @@ timeouts, failures and reversals on demand.
 | Step | What | Status |
 |---|---|---|
 | 1 | Project skeleton (build, config, database, foundation tests) | ✅ |
-| 2 | `shared`: `Money`, error model, auditing, correlation IDs | ✅ (test debt open) |
+| 2 | `shared`: `Money`, error model, auditing, correlation IDs | ✅ (`MoneyTest` gaps still open) |
 | 3 | `customer`: entity, KYC tier, API | ✅ |
 | 4 | `account`: NUBAN numbers, balances, system accounts | ✅ |
 | 5 | `ledger`: journal entries and lines, balanced-only posting | ✅ |
@@ -311,9 +315,9 @@ timeouts, failures and reversals on demand.
 | 8 | `compliance` (thin): per-tier limits | ✅ |
 | 9 | `notification` (thin): event listeners | ✅ |
 | 10 | `transfer` (external) with a fake gateway, outbox, fees, reversals | ✅ |
-| 11 | Paystack client, tested with WireMock | ⏳ |
+| 11 | Paystack client, tested with WireMock | ⏸ on hold (needs a Paystack test account; see section 16 for backups) |
 | 12 | Webhooks and reconciliation | ⏳ |
-| 13 | Hardening: API-key authentication, rate limiting, logging, metrics | ⏳ |
+| 13 | Hardening: API-key authentication, rate limiting, logging, metrics | 🔄 request logging done (section 14); authentication, rate limiting, metrics ⏳ |
 
 Each step ends with passing tests before the next one starts.
 
@@ -658,10 +662,9 @@ bean. Register it with a `FilterRegistrationBean` (`RequestIdFilterConfig`). **R
 filter in a module (e.g. the API-key filter, Step 13) is registered this way.
 `PayBridgeApplicationTests` missed it because it uses a mock web environment and never starts Tomcat.
 
-**Still to do:** `handlePayBridgeException` does not yet call `addRequestId(problem)`, so business-error
-responses lack the `requestId` field. Also unproven: that the ID appears on log lines *during* a request
-(the app logs nothing at INFO per request; it shows as `[]` at startup). It will be proven by the first
-endpoint that logs.
+**Follow-ups, since closed:** business-error responses now carry the `requestId` field. Whether the ID appeared on log
+lines *during* a request stayed unproven until the access log was added (2026-10-13), which showed it **never did**:
+the correlation pattern was in Logback syntax. Fixed; see section 14.
 
 ### Testing decision: tests deferred from here on (recorded 2026-10-05)
 
@@ -669,6 +672,10 @@ To move faster, we agreed to **stop writing new tests for now** and only check t
 that the existing 31 tests still pass. **This is test debt.** It must be paid back before Step 6 (concurrency)
 and Step 7 (transfers), where money correctness depends on it. Debt so far: the missing `MoneyTest` groups
 above, and tests for everything from 2.4 onward.
+
+**Update (2026-10-13): the debt is paid except `MoneyTest`.** Steps 3 to 10 were written with tests, and the suite is now
+**217 tests**. Still open: `negate`, the sign checks, equality and `hashCode`, `compareTo` ordering, currency mismatch on
+`subtract` and `compareTo`, and immutability of the originals.
 
 ---
 
@@ -687,6 +694,14 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 | 7 | Tomcat and Jackson were too old | The "remove on 4.1.1" comment was wrong for these two | Re-added two overrides (Option A) | Verify claims, even written ones |
 | 9 | First `spring-boot:run` failed with `password authentication failed for user "paybridge"` | A Windows PostgreSQL 18 service already owned port 5432, so the app logged into *that* server, not our container | Mapped the container to host port 5433 (`"5433:5432"`) in `compose.yaml` | The error message names the symptom, not always the culprit. Check *which* server answered |
 | 8 | 4.1.2 was labelled stable by mistake | I assumed the label without seeing the Initializr | Used 4.1.1, the plain release | Believe the screen over an assumption |
+| 10 | App crashed at startup with `NullPointerException ... "this.logger" is null` after adding the request-id filter | The filter was a `@Component`; Modulith's observability wraps module beans in CGLIB proxies, which skip the constructor | Register the filter with a `FilterRegistrationBean` (the access-log filter follows the same rule) | Tests with a mock web environment never start Tomcat. Run the real app |
+| 11 | `AccountResponse` was an empty placeholder (`public record AccountResponse() {}`) | A stub left from earlier | Replaced with the full record | Read the file, don't trust its name |
+| 12 | IntelliJ: "package-info is not a valid qualified name" | *New → Java Class* rejects hyphens | Use *New → File* | The tool's rules are not Java's rules |
+| 13 | The "all balances sum to zero" test failed intermittently | An account test changed a balance directly and left it changed, polluting the shared database | That test now zeroes the balance at the end | Tests sharing one database must clean up after themselves |
+| 14 | Docker Desktop engine stopped or "pipe busy" during test runs | Docker not fully started | Restart Docker Desktop and retry | Testcontainers and compose both need a healthy engine |
+| 15 | 124 tests errored with "ApplicationContext failure threshold exceeded" (2026-10-13) | Docker Desktop was not running, so Testcontainers could not start a database. The new filter tests, which need no Docker, passed | Started Docker and reran: 217 pass | A wall of identical context errors usually means one environment problem, not 124 code problems. Read the first cause |
+| 16 | The request id never appeared on any log line (`[]`) although the response header had it | The pattern `%X{requestId:-}` is Logback syntax. Log4j2 reads `requestId:-` as the key name, finds nothing and prints blank | Changed the pattern to the Log4j2 form `[%X{requestId}] ` and proved it against a real running app | The same words mean different things in different logging engines. Check the output, not just that the setting loads |
+| 17 | `Port 8080 was already in use` when starting the app | An earlier `spring-boot:run` (or IntelliJ run) was still running | Found it with `netstat -ano \| grep 8080` and stopped it with `taskkill //PID <pid> //F` (Git Bash needs the double slash) | The startup log reaches Tomcat before this fails, so everything else is fine |
 
 ---
 
@@ -707,6 +722,18 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 | Auth | API keys (Step 13) | JWT | No human users; server-to-server |
 | Modulith | `@NamedInterface("api")` on `api` packages, `shared` open | Rename `api` to the module root | Keeps the assignment's layout |
 | Database tests | Testcontainers Postgres | H2 | A fake database behaves differently |
+| Working method | Build the finished system in this copy, with a frozen hand-built snapshot in the learning copy | Hand-build every step in the 36-hour window | A hard demo deadline |
+| Ledger | Append-only, enforced by database triggers as well as code | Code checks only | A bug in one layer must not corrupt money |
+| Idempotency | `Idempotency-Key` header, `INSERT ... ON CONFLICT DO NOTHING`, SHA-256 fingerprint | Check-then-insert in code | A unique constraint is the only race-free check |
+| Compliance limits | One atomic SQL upsert on `daily_usage` | Read, check, write | Two simultaneous transfers could both pass a read-then-write check |
+| External fee | Charged on top of the amount, banded, held with the amount | Deducted from the amount | The recipient gets exactly what was typed; the hold covers amount plus fee |
+| External transfers | Accept in one transaction, call the bank outside any transaction (outbox plus dispatcher) | Call the bank inside the transaction | Slow, unreliable calls must not hold locks or risk paying without a record |
+| Timeouts | A timeout is "unknown": keep the money held, retry, then ask the bank | Treat a timeout as a failure and refund | Refunding early can pay the customer and the bank both |
+| Gateway | `TransferGateway` interface with a fake bank first | Go straight to Paystack | Sandboxes always say yes; the fake can force timeouts, refusals and reversals |
+| Events | Modulith `@ApplicationModuleListener` (after commit, asynchronous, persisted) | Call notification code directly | A failed alert can never undo a transfer |
+| Request logging | One access-log line per request from a servlet filter, bodies and headers never logged | Log inside each controller; log bodies for debugging | One place cannot be forgotten; bodies will hold personal data and (Step 13) API keys |
+| Health-check logging | DEBUG when it succeeds, ERROR when it fails | Log every poll at INFO | Pollers hit it every few seconds and would bury real traffic |
+| Step 11 | Put on hold until a Paystack test account exists | Block everything on it | The rest of the system does not depend on which bank is behind the interface |
 
 ---
 
@@ -727,6 +754,24 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 Rules: tests are deterministic (an injectable clock, no sleeping); each test starts from clean
 data; failure cases come first for money-critical code.
 
+**Where we actually are (2026-10-13): 217 tests, 0 failures, 0 skipped.** In practice:
+
+- **Unit tests:** `Money`, `Nuban`, error codes and exceptions, the transfer state machine, fee bands, and
+  `AccessLogFilterTest` (9 tests, no Docker needed: it listens to the filter's real logger and checks each log level).
+- **Whole-application tests** extend `AbstractIntegrationTest` (a real Postgres through Testcontainers, `MockMvc` through
+  `webAppContextSetup`, helpers `createCustomer`, `openAccount`, `newAccount`, `fundAccount`, `newFundedAccount`). They share
+  one database, so each test creates its own customers and accounts. **They need Docker running.**
+- **`application-test.yml`** switches the dispatcher and reconciler timers off and makes retries instant, so tests drive them
+  step by step.
+- **Concurrency tests** use a `CountDownLatch` "starting gun" and check the invariant that **all balances sum to zero**.
+- **External-transfer tests** (`ExternalTransferTest`, 28; `BeneficiaryTest`, 8) drive the fake bank's behaviours: timeouts,
+  refusals, slow success, reversal after success, and late success after a refund.
+- **`ModularityTests`** is the Modulith structure check.
+- **Not yet written:** mock-server tests for the Paystack client (Step 11) and webhook tests (Step 12).
+
+**Note on `MockMvc`:** the shared `MockMvc` is built with `webAppContextSetup(...).build()`, which does **not** add servlet filters.
+So the request-id and access-log filters are tested on their own, and were also proved against a real running app.
+
 > **Analogy: crash-testing a car.** You don't only drive it on a sunny day. You hit it into
 > walls on purpose, because the failure behaviour is what protects people.
 
@@ -734,15 +779,14 @@ data; failure cases come first for money-critical code.
 
 ## 11. What is next
 
-1. **Item 5:** write the six `package-info.java` files and confirm `mvnw -q compile` passes.
-2. **Items 6 to 11:** configuration, compose file, first migration, two tests, run, Git.
-3. **Step 2:** the `shared` module, starting with `Money`.
+Steps 1 to 10 are done. The live list of what is left, in priority order, is in
+[section 15](#15-status-and-what-is-left-2026-10-13).
 
-**Open to-dos**
+**Standing to-dos**
 
 - Optionally set `JAVA_HOME` to `C:\Program Files\Java\jdk-25.0.4`, then reopen the terminal.
-- Create a Paystack **test-mode** account before Step 11. Use the *test* secret key
-  (starts with `sk_test_`), never commit it, and pass it as an environment variable.
+- When Step 11 resumes: use a Paystack **test-mode** secret key (starts with `sk_test_`), never commit it, and pass it as an
+  environment variable. If a Paystack account is slow to get, section 16 lists backups.
 
 ---
 
@@ -796,6 +840,10 @@ data; failure cases come first for money-critical code.
 | **Unique constraint** | The database refuses duplicates in a column | A seat number that can only be sold once |
 | **Webhook** | An outside system calling *us* with news | A courier knocking on the door |
 | **YAML** | A nested, indentation-based config format | An outline with indents |
+| **Access log** | One line per request: method, path, status, time | A visitors' book at the front desk |
+| **Correlation (request) id** | A unique id attached to every log line of one request, returned in the `X-Request-Id` header | A luggage tag |
+| **MDC** | Mapped Diagnostic Context: a per-thread notepad the logging engine reads when writing a line | A sticky note on the desk of whoever is working |
+| **Servlet filter** | Code that wraps every web request before and after the controller | A security gate everyone walks through |
 
 ---
 
@@ -809,7 +857,7 @@ change and the reason, and never silently overwrite history.*
 To save time, Claude wrote Steps 3 to 10 in one go, checking each step with tests and, at the end, a live run of the real app.
 A frozen snapshot of the hand-built work (Steps 1 to 2 and the start of 3) is in the sibling folder `paybridge(learning copy)`.
 
-**Result:** 208 automated tests pass. A live run against a throwaway Postgres confirmed: customer and account creation, funding,
+**Result (as of 2026-10-06):** 208 automated tests passed (217 today, after the access-log work in section 14). A live run against a throwaway Postgres confirmed: customer and account creation, funding,
 an internal transfer and its idempotent replay, validation errors, saved payees, an external transfer that the timers finished on
 their own (success), one the fake bank refused (automatic refund), SMS/email alerts, and the limits endpoint.
 
@@ -851,6 +899,98 @@ The simulated bank picks its behaviour from the last four digits of the payee's 
 - **Tests:** a `test` profile (`src/test/resources/application-test.yml`) switches the dispatcher and reconciler timers off so tests drive them step by step.
 - **Lesson repeated:** `PayBridgeApplicationTests` and the other tests use a mock web layer. Starting the real app caught nothing new this time, which is the point of doing it.
 
-### Next: Step 11 (guided)
+### Next: Step 11 (guided), currently on hold
 
-Write `PaystackTransferGateway` implementing `TransferGateway`, selected with `paybridge.gateway=paystack`. See the Step 11 guide in the chat history.
+Write `PaystackTransferGateway` implementing `TransferGateway`, selected with `paybridge.gateway=paystack`. It is on hold until a Paystack
+test account exists; see sections 15 and 16.
+
+---
+
+## 14. Request logging and the request-id fix (2026-10-13)
+
+**Goal:** make sure every endpoint is logged. Before this, the only logging was the notification sender, the dispatcher and
+reconciler warnings, and the global error handler. **No request was logged**, so none of the endpoints were.
+
+### What was added
+
+- `shared/config/AccessLogFilter` writes one line per request after it finishes, for example
+  `POST /api/transfers/internal -> 201 (347 ms)`. It includes the query string (kept percent-encoded, so it cannot carry a line break,
+  and capped at 300 characters) and **never logs request bodies or headers**, because they will hold personal data and, from Step 13, API keys.
+- `shared/config/AccessLogFilterConfig` registers it with a `FilterRegistrationBean` at `HIGHEST_PRECEDENCE + 1`, just after
+  `RequestIdFilter`, so the request id is already set. As with the request-id filter, it must **not** be a `@Component`
+  (problem 10 in section 8).
+- **Levels:** 5xx is ERROR, 4xx is WARN, everything else INFO. A successful `/actuator` health check is DEBUG, because pollers hit it every
+  few seconds; a failing one is still ERROR. A request that ends in an unhandled exception is logged as a 500 and the exception is rethrown.
+- `AccessLogFilterTest`: 9 tests that attach a capturing appender to the filter's real logger and check each level, the query string, the
+  long-query cut, the exception case, and that bodies and headers never appear.
+
+> **Analogy:** a visitors' book at the front desk. Every visitor is signed in and out with the time they spent, but nobody copies down what
+> was in their bag.
+
+### A bug found while checking it
+
+The log lines showed `[]` where the request id should be. Comparing a response's `X-Request-Id` header with the log proved the id **never reached
+the logs**. Cause: `logging.pattern.correlation` was `[%X{requestId:-}] `. The `:-` default is **Logback** syntax; this project uses **Log4j2**, which
+reads `requestId:-` as the key name, finds nothing and prints blank. Fixed to `[%X{requestId}] `. This closed the "unproven" note from section 7b.
+
+### Proof against a real running app
+
+A throwaway Postgres and the app on separate ports (not the usual ones), then 22 calls covering every endpoint: customers (create, get, change
+KYC tier), accounts (open, get, by number, list), dev funding, internal transfers (new, replay, missing key), transfer list, statement, limits,
+notifications, beneficiaries (resolve, save, list), an external transfer, and a 404 on an unknown path. All 22 were logged. After the fix, the
+request id on each line matched the response header and the `requestId` in the error body, and a caller-supplied id (`my-demo-123`) appeared on its own line.
+
+### Still true
+
+The id is **not** carried onto background threads (dispatcher, reconciler, asynchronous notification listeners), so their lines show `[]`. That is
+part of Step 13.
+
+---
+
+## 15. Status and what is left (2026-10-13)
+
+**Built and tested:** Steps 1 to 10, with 217 passing tests. External transfers work end to end against the **simulated bank** (hold in suspense, outbox,
+dispatcher with backoff, reconciler, refunds, reversal handling, alerts). Every request is access-logged with its request id.
+
+**Not built:**
+
+| Item | Detail |
+|---|---|
+| Real bank gateway | Step 11 (Paystack, or a backup from section 16). `paybridge.gateway` is `fake`. |
+| Webhooks | Step 12. Needs signature checking on the raw body, de-duplication by event id, then `applyProviderResult`. The receiving side could be built and tested against the fake bank first. It would also let the "bank reverses after success" case (`7777`) be triggered by hand. |
+| Authentication | Step 13. Today anyone who can reach the app can create customers and move money. |
+| Rate limiting, metrics | Step 13. |
+| Request id on background threads | Step 13. |
+| Dev funding endpoint | `POST /api/dev/accounts/{id}/fund` creates money for anyone. Switch off with `paybridge.dev.funding-enabled=false` anywhere but a private machine. |
+| `MoneyTest` gaps | See section 7b. |
+| `fx`, `remittance`, `settlement`, full AML | Deferred by decision (section 2). |
+
+**Placeholders to check before trusting:** fee bands (NGN 10 / 25 / 50), per-tier limits, and the fictional bank code `999`.
+
+**Work that exists only in the separate `paybridge(learning copy)` folder, not in this copy:** the Dockerfile and Render deployment files, Swagger UI,
+the actuator CORS fix, a React front end, and the internal, external, deployed and Swagger demo guides. That copy does not have the access log or the
+request-id fix either. Bring pieces across only on request.
+
+---
+
+## 16. Payment providers other than Paystack (researched 2026-10-13)
+
+The question was which other providers would suit this project given a deadline and the need to get API keys quickly. This was checked against the
+providers' public developer docs on 2026-10-13. Sign-up friction and any identity checks before keys are issued could **not** be verified.
+
+**What our code needs from a provider:** (1) an account-holder name lookup, (2) a payout that takes our own unique reference so a retry is safe,
+(3) a status lookup by that reference so the reconciler can get "never heard of it", (4) webhooks, (5) a sandbox with quickly available keys.
+
+| Provider | Sandbox keys | Fit | Concerns |
+|---|---|---|---|
+| **Monnify** (Moniepoint/TeamApt) | Dashboard "API Keys & Contracts"; sandbox at `sandbox.monnify.com`; single-transfer guide says disbursements are **on by default in sandbox** | Good: a validate-bank-account endpoint, transfers take our reference, account name is mandatory (matches our name-enquiry-first flow) | Older pages say disbursements start disabled; if sandbox transfers are rejected, check that setting. Live use needs activation and IP whitelisting (not needed here). |
+| **Kora (Korapay)** | Dashboard test mode, then Settings, API configuration; sandbox base `api.korapay.com/sandbox/` | Reasonable: payouts, bank list, webhooks, status query | No documentation found for simulating payout success, failure or reversal in sandbox |
+| **Flutterwave** | Test credentials from an onboarding sign-up; newer docs use a bearer token that expires every 10 minutes | Possible: account verification and a transfers flow | More work (token refresh); v3 and v4 docs use different hosts and auth; test-mode transfer behaviour unconfirmed |
+| **Squad (GTCO)** | Not verified | Unknown | Search returned nothing; skip unless there is already an account |
+
+**Recommendation:** stay on Paystack if a test account is quick to get; otherwise Monnify first, Kora second.
+
+**What switching would cost** (analysis of the docs, not tested): only one class changes, because everything uses `TransferGateway`. A recipient code is a
+Paystack idea; Monnify and Kora take the bank code and account number on each payout, so `createRecipient` would return a value we construct (for example
+the bank and account number joined). Webhook signatures and payloads differ for Step 12, and status values need mapping to `SUCCESS`, `FAILED`, `PENDING`
+and `NOT_FOUND`.
