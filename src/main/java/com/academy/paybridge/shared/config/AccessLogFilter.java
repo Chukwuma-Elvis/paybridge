@@ -26,6 +26,12 @@ public class AccessLogFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(AccessLogFilter.class);
 
+    /**
+     * Set by the authentication filter to the NAME of the API key that made the request (never the key itself), so
+     * each log line says who called.
+     */
+    public static final String CLIENT_ATTRIBUTE = "paybridge.client";
+
     private static final String HEALTH_CHECK_PREFIX = "/actuator";
     private static final int MAX_TARGET_LENGTH = 300;
 
@@ -47,16 +53,26 @@ public class AccessLogFilter extends OncePerRequestFilter {
     private void logRequest(HttpServletRequest request, int status, long millis) {
         String method = request.getMethod();
         String target = target(request);
+        String client = clientSuffix(request);
 
         if (status >= 500) {
-            log.error("{} {} -> {} ({} ms)", method, target, status, millis);
+            log.error("{} {} -> {} ({} ms){}", method, target, status, millis, client);
         } else if (status >= 400) {
-            log.warn("{} {} -> {} ({} ms)", method, target, status, millis);
+            log.warn("{} {} -> {} ({} ms){}", method, target, status, millis, client);
         } else if (request.getRequestURI().startsWith(HEALTH_CHECK_PREFIX)) {
-            log.debug("{} {} -> {} ({} ms)", method, target, status, millis);
+            log.debug("{} {} -> {} ({} ms){}", method, target, status, millis, client);
         } else {
-            log.info("{} {} -> {} ({} ms)", method, target, status, millis);
+            log.info("{} {} -> {} ({} ms){}", method, target, status, millis, client);
         }
+    }
+
+    /** " client=mobile-app" when the caller is known, otherwise nothing. Control characters are stripped. */
+    private static String clientSuffix(HttpServletRequest request) {
+        Object client = request.getAttribute(CLIENT_ATTRIBUTE);
+        if (client == null) {
+            return "";
+        }
+        return " client=" + client.toString().replaceAll("\\p{Cntrl}", "?");
     }
 
     /** The path plus query string exactly as sent (still percent-encoded, so it cannot carry a line break), capped in length. */

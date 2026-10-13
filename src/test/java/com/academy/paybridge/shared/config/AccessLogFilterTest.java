@@ -67,6 +67,33 @@ class AccessLogFilterTest {
     }
 
     @Test
+    void theCallerIsNamedWhenKnown() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/customers");
+        request.setAttribute(AccessLogFilter.CLIENT_ATTRIBUTE, "mobile-app");
+
+        filter.doFilter(request, new MockHttpServletResponse(), respondingWith(200));
+
+        assertThat(appender.messages().get(0)).startsWith("GET /api/customers -> 200 (").endsWith(" ms) client=mobile-app");
+    }
+
+    @Test
+    void aCallersNameCannotInjectExtraLogLines() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/customers");
+        request.setAttribute(AccessLogFilter.CLIENT_ATTRIBUTE, "evil\nINFO fake line\r\n");
+
+        filter.doFilter(request, new MockHttpServletResponse(), respondingWith(200));
+
+        assertThat(appender.messages().get(0)).doesNotContain("\n").doesNotContain("\r").contains("client=evil?INFO fake line??");
+    }
+
+    @Test
+    void noCallerIsMentionedWhenUnknown() throws Exception {
+        run("GET", "/api/customers", null, respondingWith(401));
+
+        assertThat(appender.messages().get(0)).doesNotContain("client=");
+    }
+
+    @Test
     void aClientErrorIsLoggedAtWarn() throws Exception {
         run("GET", "/api/accounts/does-not-exist", null, respondingWith(404));
 

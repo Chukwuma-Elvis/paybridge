@@ -15,6 +15,9 @@ class ErrorCodeTest {
             "CURRENCY_MISMATCH, BAD_REQUEST",
             "RESOURCE_NOT_FOUND, NOT_FOUND",
             "CONFLICT, CONFLICT",
+            "UNAUTHORIZED, UNAUTHORIZED",
+            "FORBIDDEN, FORBIDDEN",
+            "RATE_LIMITED, TOO_MANY_REQUESTS",
             "INTERNAL_ERROR, INTERNAL_SERVER_ERROR"
     })
     void mapsEachCodeToItsHttpStatus(ErrorCode code, HttpStatus expected) {

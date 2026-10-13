@@ -8,12 +8,16 @@ spring:
 
 server:
   port: 8080
+  # Behind a hosting proxy the caller's real address arrives in X-Forwarded-For. This makes the web server report it, so
+  # the failed-key limiter counts each caller separately instead of lumping everyone behind the proxy together.
+  forward-headers-strategy: native
 
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        # Only "health" is open to everyone. "metrics" needs an admin API key (see paybridge.security below).
+        include: health,metrics
 
 logging:
   pattern:
@@ -21,6 +25,18 @@ logging:
     correlation: "[%X{requestId}] "
 
 paybridge:
+  security:
+    # API-key authentication. Leave enabled anywhere that is reachable by other people. Setting it to false lets every
+    # request through unchecked, for a private developer machine only.
+    enabled: true
+    # The first admin key. Supply it through the environment, never write a real value in this file:
+    #   PAYBRIDGE_ADMIN_API_KEY=<at least 32 characters: letters, digits, _ or ->
+    # At startup its hash is registered; with it you create the other keys (POST /api/admin/api-keys).
+    bootstrap-admin-key: ${PAYBRIDGE_ADMIN_API_KEY:}
+    rate-limit:
+      requests-per-minute: 120     # per API key, all endpoints
+      transfers-per-minute: 30     # per API key, submitting transfers only
+      failed-auth-per-minute: 10   # per caller address, requests carrying a key that does not exist
   dev:
     # TEST SCAFFOLDING: lets you put test naira into an account. Set to false anywhere but your own machine.
     funding-enabled: true

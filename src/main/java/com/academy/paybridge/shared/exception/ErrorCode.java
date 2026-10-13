@@ -15,6 +15,9 @@ public enum ErrorCode {
     IDEMPOTENCY_KEY_REUSED(HttpStatus.valueOf(422)),
     IDEMPOTENCY_KEY_IN_PROGRESS(HttpStatus.CONFLICT),
     GATEWAY_ERROR(HttpStatus.BAD_GATEWAY),
+    UNAUTHORIZED(HttpStatus.UNAUTHORIZED),
+    FORBIDDEN(HttpStatus.FORBIDDEN),
+    RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final HttpStatus httpStatus;

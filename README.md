@@ -5,12 +5,12 @@
 [![Spring Modulith](https://img.shields.io/badge/Spring%20Modulith-2.1.1-6DB33F?style=for-the-badge)](https://spring.io/projects/spring-modulith)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Maven](https://img.shields.io/badge/Maven-Wrapper-C71A36?style=for-the-badge&logo=apachemaven&logoColor=white)](https://maven.apache.org/)
-[![Tests](https://img.shields.io/badge/Tests-217%20passing-brightgreen?style=for-the-badge)](#-testing--verification)
+[![Tests](https://img.shields.io/badge/Tests-350%20passing-brightgreen?style=for-the-badge)](#-testing--verification)
 
 > **A Core Banking & Settlement Engine engineered as a Spring Boot Modular Monolith.**
 > Built to model real-world financial infrastructure: double-entry bookkeeping, zero-overdraft concurrency locking, strict idempotency, an asynchronous outbox gateway dispatcher with reconciliation, and tiered compliance limits.
 
-**Status (2026-10-13):** Phase 1, local NGN-to-NGN transfers, is built. Internal transfers are complete; external transfers run end to end against a **simulated bank**. The real Paystack connection, webhooks and API-key authentication are **not built yet**. See [Project Status](#-project-status) for the honest list, and [`BUILD-LOG.md`](BUILD-LOG.md) for every decision and the reasoning behind it.
+**Status (2026-10-14):** Phase 1, local NGN-to-NGN transfers, is built and now **secured with API keys and rate limits**. Internal transfers are complete; external transfers run end to end against a **simulated bank**. The real Paystack connection and webhooks are **not built yet**. See [Project Status](#-project-status) for the honest list, [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md) for a line-by-line explanation of the security work, and [`BUILD-LOG.md`](BUILD-LOG.md) for every decision and the reasoning behind it.
 
 ---
 
@@ -46,6 +46,8 @@ PayBridge is architected around foundational financial engineering principles:
   2. *A gateway timeout means "unknown", never "failed"* (the funds stay safely held in a `SUSPENSE` account while the system finds out).
   3. *Applying a bank's answer must be idempotent* (a repeated poll or webhook can never pay out twice).
 * **Spring Modulith Boundaries:** Modules interact only through their public `api/` packages. A cross-module leak fails the build's tests (`ModularityTests`).
+* **API-Key Security, Hashed at Rest:** every endpoint except the health check needs an `X-API-Key` header. Keys are 256 bits of randomness and only their SHA-256 hash is stored, so a copy of the database cannot be used to call the API. Keys have roles (`CLIENT`, `ADMIN`); money-creating and key-management endpoints are admin-only. The first admin key is supplied through an environment variable, never a file.
+* **Rate Limiting & Guess Protection:** each key has a token-bucket budget (and a tighter one for submitting transfers). An address that presents too many invalid keys is blocked, even for its next, correct guess.
 * **Events After Commit:** Customer alerts are delivered through Spring Modulith events (`@ApplicationModuleListener`): they run after the transaction commits, asynchronously, and are persisted until handled. A failed alert can never undo a transfer.
 
 ---
@@ -63,7 +65,8 @@ src/main/java/com/academy/paybridge/
 │   └── client/    #   TransferGateway interface + FakeTransferGateway (the simulated bank)
 ├── compliance/    # Atomic per-tier daily and per-transaction limit reservations
 ├── notification/  # Asynchronous SMS and email alerts delivered through domain events
-├── shared/        # Immutable Money, error model, auditing, request-id and access-log filters
+├── security/      # API keys (hashed), roles, authentication + rate-limit filters, key management endpoints
+├── shared/        # Immutable Money, error model, auditing, request-id and access-log filters, log correlation
 └── [fx / remittance / settlement]   # Planned later phases, not started
 ```
 
@@ -79,9 +82,10 @@ Each module is split into layers: `api/` (the public front desk), `domain/`, `re
 | **`transfer`** | Internal transfers, external outbox, payees, idempotency | `TransferApi` | `transfer`, `idempotency_key`, `beneficiary`, `transfer_outbox` |
 | **`compliance`** | Tiered daily and per-transaction quota reservations | `ComplianceApi` | `daily_usage` |
 | **`notification`** | Customer alerts, decoupled through Modulith events | `@ApplicationModuleListener` | `notification` |
+| **`security`** | API keys, roles, key-checking and rate-limiting filters, key management | `/api/admin/api-keys` (nothing else depends on this module) | `api_key` |
 | **`shared`** | `Money` value object, error codes, auditing, request correlation | Open module (used by all) | `event_publication` |
 
-The database schema is versioned with Flyway migrations `V1` to `V8` (`src/main/resources/db/migration`), and Hibernate runs in `validate` mode: it checks the tables but never changes them.
+The database schema is versioned with Flyway migrations `V1` to `V9` (`src/main/resources/db/migration`), and Hibernate runs in `validate` mode: it checks the tables but never changes them.
 
 ---
 
@@ -309,8 +313,26 @@ All amounts are integer **kobo** ($100\text{ kobo} = ₦1.00$). Every transfer n
 * `GET /api/compliance/customers/{customerId}/limits`: daily usage and remaining limit.
 * `GET /api/notifications?customerId={customerId}`: SMS and email alerts sent to a customer.
 
-### 7. Operations
-* `GET /actuator/health`: health check.
+### 7. API Keys (admin only)
+* `POST /api/admin/api-keys`: create a key (`name`, `role` of `CLIENT` or `ADMIN`). `201 Created`. The reply contains the key **once** (`Cache-Control: no-store`); it cannot be shown again.
+* `GET /api/admin/api-keys`: list keys (name, prefix, role, active). Never shows a key or hash.
+* `DELETE /api/admin/api-keys/{id}`: revoke a key. `204`; repeating is harmless.
+
+### 8. Operations
+* `GET /actuator/health`: health check. **The only open address.**
+* `GET /actuator/metrics`, `/actuator/metrics/{name}`: metrics (admin key). Business meters: `paybridge.transfers` (tags `type`, `outcome`), `paybridge.security.rejections` (tag `reason`), `paybridge.ratelimit.rejections` (tag `limiter`).
+
+### Authentication
+
+Every address except `/actuator/health` needs an API key in the `X-API-Key` header:
+
+| Address | Needs |
+|---|---|
+| `/actuator/health` (and its liveness/readiness sub-paths) | nothing |
+| everything else under `/api` | any valid key (`CLIENT` or `ADMIN`) |
+| `/api/admin/**`, `/api/dev/**`, other `/actuator/**` | an `ADMIN` key |
+
+Addresses are cleaned up (`..`, `//`, `;params`, `%`-codes, upper case) before the rule is applied, so disguised addresses cannot reach a protected page. Rate limits per key: 120 requests a minute, and 30 transfer submissions a minute. See [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md).
 
 ### Error Format
 
@@ -338,6 +360,9 @@ Every error has the same JSON shape (RFC 9457 problem detail):
 | `IDEMPOTENCY_KEY_REUSED` | 422 | The same key was sent with a different request |
 | `IDEMPOTENCY_KEY_IN_PROGRESS` | 409 | The first request with that key is still running |
 | `ACCOUNT_NOT_ACTIVE`, `INVALID_STATE`, `CURRENCY_MISMATCH`, `CONFLICT`, `GATEWAY_ERROR` | various | Account, state-machine, currency, conflict and provider problems |
+| `UNAUTHORIZED` | 401 | No API key, or a key that is invalid or revoked |
+| `FORBIDDEN` | 403 | A valid key that is not allowed here (a client key on an admin address) |
+| `RATE_LIMITED` | 429 | Over a rate limit, or an address blocked for too many invalid keys. Includes `Retry-After` |
 | `INTERNAL_ERROR` | 500 | Anything unexpected; the real cause is only logged, never returned |
 
 ---
@@ -347,16 +372,20 @@ Every error has the same JSON shape (RFC 9457 problem detail):
 Every request the application handles is logged by `AccessLogFilter`, one line per request, after it finishes:
 
 ```
-INFO  ... [3f9a1c52-...] c.a.p.s.c.AccessLogFilter : POST /api/transfers/internal -> 201 (347 ms)
-WARN  ... [bdfd6ba9-...] c.a.p.s.c.AccessLogFilter : GET /api/does-not-exist -> 404 (16 ms)
+INFO  ... [3f9a1c52-...] c.a.p.s.c.AccessLogFilter : POST /api/transfers/internal -> 201 (347 ms) client=mobile-app
+WARN  ... [bdfd6ba9-...] c.a.p.s.c.AccessLogFilter : GET /api/customers/... -> 401 (13 ms)
+INFO  ... [3f9a1c52-...] c.a.p.n.s.LoggingNotificationSender : [SMS] to +234...: You sent NGN 500.00 ...
+INFO  ... [dispatcher-30d7157c] c.a.p.n.s.LoggingNotificationSender : [SMS] ... Your transfer of NGN 2,000.00 was successful
 ```
 
 * **Request id on every line:** `RequestIdFilter` gives each request an id (the caller's `X-Request-Id` if it is safe, otherwise a fresh UUID). It appears in the log line, the `X-Request-Id` response header and the `requestId` field of every error, so one id ties together a caller's report and the server's logs.
 * **Levels:** `5xx` is `ERROR`, `4xx` is `WARN`, everything else `INFO`. A successful `/actuator/health` is `DEBUG` (pollers hit it every few seconds and would bury real traffic); a failing one is still `ERROR`.
-* **What is never logged:** request bodies and headers, because they will hold personal data and, once authentication exists, API keys.
-* **Known gap:** the request id is not yet carried onto background threads (dispatcher, reconciler, asynchronous notification listeners), so their lines show `[]`.
+* **Who called:** once authenticated, the line ends with `client=<name of the API key>`. The name is logged, never the key. Refused requests (401, 403, 429) are logged too, without a `client`.
+* **What is never logged:** request bodies and headers, because they hold personal data and API keys.
+* **Background threads keep the id:** an alert sent after a transfer commits carries the id of the request that caused it (carried across threads by Micrometer context propagation). Timer runs get their own tag, such as `dispatcher-30d7157c` or `reconciler-9be2a410`.
+* **Metrics:** `/actuator/metrics` (admin key) shows `paybridge.transfers` (committed outcomes only), `paybridge.security.rejections` and `paybridge.ratelimit.rejections`.
 
-Both filters are registered with `FilterRegistrationBean` and are deliberately **not** `@Component`s: Spring Modulith's observability support wraps module beans in proxies, which breaks a servlet filter that is a bean.
+The four filters run in this order: request id, access log, API-key check, rate limit. They are registered with `FilterRegistrationBean` and are deliberately **not** `@Component`s: Spring Modulith's observability support wraps module beans in proxies, which breaks a servlet filter that is a bean.
 
 ---
 
@@ -366,7 +395,10 @@ Settings live in `src/main/resources/application.yml`.
 
 | Setting | Meaning |
 |---|---|
-| `paybridge.dev.funding-enabled` | Switches the test funding endpoint. **Turn it off anywhere but a private machine:** it creates money. |
+| `paybridge.security.enabled` | API-key checking. On by default. `false` lets every request through (private developer machine only; the app warns at startup). |
+| `paybridge.security.bootstrap-admin-key` | The first admin key, read from the **`PAYBRIDGE_ADMIN_API_KEY`** environment variable (at least 32 characters of letters, digits, `_` or `-`; the app refuses to start with a weaker one). Never write it in a file. |
+| `paybridge.security.rate-limit.*` | `requests-per-minute` (120, per key), `transfers-per-minute` (30, per key, transfer submissions only), `failed-auth-per-minute` (10, per address, requests carrying an unknown key). |
+| `paybridge.dev.funding-enabled` | Switches the test funding endpoint (which also needs an admin key). **Turn it off anywhere but a private machine:** it creates money. |
 | `paybridge.gateway` | Which bank sits behind external transfers. `fake` is the built-in simulated bank; `paystack` arrives in Step 11. |
 | `paybridge.account.bank-code` | A fictional bank code (`999`) used for the NUBAN check digit. |
 | `paybridge.compliance.limits` | Per-tier limits in kobo. UNVERIFIED: ₦50,000 per transfer, ₦100,000 per day. BASIC: ₦200,000 / ₦500,000. FULL: ₦5,000,000 / ₦10,000,000. Placeholder figures. |
@@ -388,10 +420,12 @@ The test profile (`src/test/resources/application-test.yml`) switches the dispat
 
 ### Run the Backend
 
-1. **Start the application:**
+1. **Choose an admin key and start the application.** The first admin key comes from the environment (at least 32 characters; letters, digits, `_` or `-`):
    ```bash
+   export PAYBRIDGE_ADMIN_API_KEY=$(openssl rand -hex 24)   # remember it: it is not stored anywhere readable
    ./mvnw spring-boot:run
    ```
+   Look for `Registered the bootstrap admin API key.` in the log. Without the variable, every protected endpoint answers `401`.
    Spring Boot starts the PostgreSQL container from `compose.yaml` automatically, applies Flyway migrations `V1` to `V8`, and boots on port `8080`. Wait for the line containing `Started PayBridgeApplication`.
 
    The database is mapped to host port **5433** (not 5432), so it does not clash with a PostgreSQL already installed on the machine.
@@ -402,17 +436,24 @@ The test profile (`src/test/resources/application-test.yml`) switches the dispat
    # {"groups":["liveness","readiness"],"status":"UP"}
    ```
 
-3. **Try it.** Create a customer, open an account, fund it and transfer:
+3. **Create a key for a caller** (the reply shows the key **once**; copy it):
    ```bash
    BASE=http://localhost:8080; H='Content-Type: application/json'
-   curl -s -X POST $BASE/api/customers -H "$H" \
+   curl -s -X POST $BASE/api/admin/api-keys -H "$H" -H "X-API-Key: $PAYBRIDGE_ADMIN_API_KEY" \
+     -d '{"name":"mobile-app","role":"CLIENT"}'
+   ```
+
+4. **Try it.** Use that key on the business endpoints:
+   ```bash
+   CLIENT=<the apiKey from step 3>
+   curl -s -X POST $BASE/api/customers -H "$H" -H "X-API-Key: $CLIENT" \
      -d '{"firstName":"Ada","lastName":"Obi","email":"ada1@example.com","phone":"08012345678"}'
    ```
-   Then follow the response ids through the endpoints in the [API Specification](#-api-specification).
+   Then follow the response ids through the endpoints in the [API Specification](#-api-specification). Test funding (`/api/dev/...`) needs the **admin** key.
 
 If `Port 8080 was already in use`, an earlier copy of the app is still running: find it with `netstat -ano | grep 8080` and stop it.
 
-> **Warning:** there is no authentication yet. Anyone who can reach the app can create customers and move money, and the dev funding endpoint creates money. Run it only on a private machine, with fake data.
+> **Note:** keys travel in a header, so use HTTPS anywhere the app is reachable by others. The rate limits are held in memory, which is right for one running copy of the app.
 
 ---
 
@@ -422,7 +463,7 @@ If `Port 8080 was already in use`, an earlier copy of the app is still running: 
 ./mvnw test
 ```
 
-**217 tests, all passing.** Most start a real PostgreSQL through Testcontainers, so **Docker must be running**. If many tests fail at once with "ApplicationContext failure threshold exceeded", check Docker first.
+**350 tests, all passing.** Most start a real PostgreSQL through Testcontainers, so **Docker must be running**. If many tests fail at once with "ApplicationContext failure threshold exceeded", check Docker first.
 
 ### Key Test Suites
 
@@ -432,7 +473,12 @@ If `Port 8080 was already in use`, an earlier copy of the app is still running: 
 * **Ledger (`LedgerServiceTest`, 19 tests, plus `LedgerEndpointsTest`):** balanced postings, reversals, replay safety, and the append-only database triggers.
 * **External Transfers (`ExternalTransferTest`, 28 tests; `BeneficiaryTest`, 8):** outbox dispatch, timeout handling, retries with backoff, refunds, reversal after success, late success after a refund, and every fake-bank profile.
 * **Modularity (`ModularityTests`):** verifies the Spring Modulith boundaries, so no unauthorised cross-module dependency exists.
-* **Access Log (`AccessLogFilterTest`, 9 tests):** listens to the filter's real logger and checks each level, the query string, the exception case, and that bodies and headers never appear. Needs no Docker.
+* **Access Log (`AccessLogFilterTest`, 12 tests):** listens to the filter's real logger and checks each level, the query string, the exception case, the caller's name, and that bodies and headers never appear. Needs no Docker.
+* **API Keys (`ApiKeyServiceTest`, 18 tests; `AdminKeyBootstrapTest`, 6):** keys are random and unique, **only the hash is stored**, unknown / altered / revoked keys are refused, a weak bootstrap key stops startup without echoing it.
+* **Security Filters (`SecurityFilterTest`, 25 tests; `ApiKeyAdminEndpointsTest`, 11; `SecurityFilterRegistrationTest`, 2):** 401 / 403 / 429 in the standard error shape, admin-only endpoints, disguised addresses cannot escalate, guessing blocks even a right key, per-key and transfer rate limits, and the running app installs the filters in order.
+* **Rate Limiter, Path Policy, Error JSON (`RateLimiterTest`, 9; `AccessPolicyTest`, 35; `ProblemJsonTest`, 4):** including 200 simultaneous threads never exceeding a limit. No Docker.
+* **Request Id Across Threads (`MdcPropagationTest`, 9; `AsyncExecutorWiringTest`, 1):** the application's **real** executor carries the id; timers get tagged ids.
+* **Metrics (`TransferMetricsTest`, 3):** committed transfers are counted; refused ones and replays are not.
 * **Unit tests:** `Money`, `Nuban`, error codes and exceptions, the transfer state machine, fee bands, compliance and notifications.
 
 The shared database is reused across tests, so each test creates its own customers and accounts, and the key invariant (all balances sum to zero) is checked after money-moving tests.
@@ -455,14 +501,13 @@ The shared database is reused across tests, so each test creates its own custome
 | 10 | External transfers: fake gateway, outbox, fees, reversals | ✅ |
 | 11 | Real Paystack client | ⏸ on hold (needs a Paystack test account) |
 | 12 | Webhooks and reconciliation | ⏳ |
-| 13 | Hardening: API-key authentication, rate limiting, metrics | 🔄 request logging done; authentication, rate limiting and metrics not started |
+| 13 | Hardening: API-key authentication, rate limiting, request logging, metrics, request id on background threads | ✅ (see [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md)) |
 
 ### Not built yet
 
 * **The real bank connection (Step 11):** `paybridge.gateway` is `fake`. The code talks to a `TransferGateway` interface, so the real provider is one new class.
 * **Webhooks (Step 12):** signature checking on the raw body, de-duplication by event id, then applying the result.
-* **Authentication, rate limiting, metrics (Step 13):** until then the API is open.
-* **Request id on background threads.**
+* **Security gaps worth knowing about:** rate limits are in memory (right for one running copy; several copies would need a shared store); guess protection depends on the caller's address being right behind a hosting proxy (configured, but not tested behind a real one); roles are coarse (any client key can read any customer); no key expiry or "last used" time.
 * **`MoneyTest` gaps:** `negate`, sign checks, equality and `hashCode`, `compareTo`, and immutability.
 * **Later phases:** `fx`, `remittance`, `settlement` and full AML screening.
 * **Placeholders to check before trusting:** the fee bands, the per-tier limits and the fictional bank code `999`.
@@ -475,6 +520,7 @@ This copy is the backend only. A React front end, Swagger UI, Docker and Render 
 
 ## 📚 Further Reading
 
+* [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md): the security, rate-limiting and observability work explained line by line, with analogies, end-to-end traces and self-test questions.
 * [`BUILD-LOG.md`](BUILD-LOG.md): every decision with its reason, the problems met and how they were solved, the testing strategy, what is left, and a glossary.
 * [`Sandbox.md`](Sandbox.md): from the assignment, a list of payment providers' free test environments.
 * `compose.yaml`: the local PostgreSQL container; `src/main/resources/db/migration`: the Flyway migrations.

@@ -1,5 +1,6 @@
 package com.academy.paybridge.transfer.service;
 
+import com.academy.paybridge.shared.logging.JobCorrelation;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ class DispatcherSchedule {
 
     @Scheduled(fixedDelayString = "${paybridge.dispatcher.interval:2s}")
     void run() {
-        dispatcher.dispatchDue();
+        JobCorrelation.run("dispatcher", dispatcher::dispatchDue);
     }
 }
 
@@ -37,6 +38,6 @@ class ReconcilerSchedule {
 
     @Scheduled(fixedDelayString = "${paybridge.reconciler.interval:5s}")
     void run() {
-        reconciler.reconcile();
+        JobCorrelation.run("reconciler", reconciler::reconcile);
     }
 }

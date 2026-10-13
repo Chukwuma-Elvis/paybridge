@@ -7,7 +7,7 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 > If a term is new, look it up in the [Glossary](#12-glossary). Status markers:
 > ✅ done · 🔄 in progress · ⏳ not started.
 
-**Last updated:** 2026-10-13 · **Current position:** Steps 1 to 10 are built and verified (217 automated tests, plus live end-to-end runs), and every request is now access-logged with its request id. **Step 11 (the real Paystack gateway) is on hold** while the Paystack account is sorted out; see [section 15](#15-status-and-what-is-left-2026-10-13) for what is left.
+**Last updated:** 2026-10-14 · **Current position:** Steps 1 to 10 and **Step 13 (security, rate limiting, observability)** are built and verified (350 automated tests, plus live runs against the real application). **Step 11 (the real Paystack gateway) and Step 12 (webhooks) are not done**; see [section 15](#15-status-and-what-is-left-2026-10-13) for what is left and [section 17](#17-step-13-security-rate-limiting-and-observability-2026-10-14) for Step 13.
 
 ---
 
@@ -29,6 +29,7 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 14. [Request logging and the request-id fix](#14-request-logging-and-the-request-id-fix-2026-10-13)
 15. [Status and what is left](#15-status-and-what-is-left-2026-10-13)
 16. [Payment providers other than Paystack](#16-payment-providers-other-than-paystack-researched-2026-10-13)
+17. [Step 13: security, rate limiting and observability](#17-step-13-security-rate-limiting-and-observability-2026-10-14)
 
 ---
 
@@ -317,7 +318,7 @@ timeouts, failures and reversals on demand.
 | 10 | `transfer` (external) with a fake gateway, outbox, fees, reversals | ✅ |
 | 11 | Paystack client, tested with WireMock | ⏸ on hold (needs a Paystack test account; see section 16 for backups) |
 | 12 | Webhooks and reconciliation | ⏳ |
-| 13 | Hardening: API-key authentication, rate limiting, logging, metrics | 🔄 request logging done (section 14); authentication, rate limiting, metrics ⏳ |
+| 13 | Hardening: API-key authentication, rate limiting, logging, metrics, request id on background threads | ✅ (sections 14 and 17; line-by-line explanation in `STEP-13-GUIDE.md`) |
 
 Each step ends with passing tests before the next one starts.
 
@@ -701,6 +702,11 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 | 14 | Docker Desktop engine stopped or "pipe busy" during test runs | Docker not fully started | Restart Docker Desktop and retry | Testcontainers and compose both need a healthy engine |
 | 15 | 124 tests errored with "ApplicationContext failure threshold exceeded" (2026-10-13) | Docker Desktop was not running, so Testcontainers could not start a database. The new filter tests, which need no Docker, passed | Started Docker and reran: 217 pass | A wall of identical context errors usually means one environment problem, not 124 code problems. Read the first cause |
 | 16 | The request id never appeared on any log line (`[]`) although the response header had it | The pattern `%X{requestId:-}` is Logback syntax. Log4j2 reads `requestId:-` as the key name, finds nothing and prints blank | Changed the pattern to the Log4j2 form `[%X{requestId}] ` and proved it against a real running app | The same words mean different things in different logging engines. Check the output, not just that the setting loads |
+| 18 | The request id **still showed `[]`** on alert log lines after a first fix whose test passed (2026-10-14) | The first fix was a `TaskDecorator` bean. **Spring Modulith's observability module installs its own `ContextPropagatingTaskDecorator` on the default executors, overwriting any decorator bean.** The test only exercised the decorator class, not the real executor | Registered a Micrometer `ThreadLocalAccessor` for the id (found through `META-INF/services`), which Modulith's decorator copies; added `AsyncExecutorWiringTest` against the **real** executor, confirmed it fails before the fix and passes after | A unit test of a part is not a test of the wiring. Run the real app and look at the output |
+| 19 | `package io.micrometer.context does not exist` | The library was in the local Maven cache from another project but was **not a dependency of this one**; that is also why Spring's decorator had silently done nothing | Added `io.micrometer:context-propagation` to `pom.xml` (version managed by Spring Boot) | Check what is on *your* classpath, not what happens to be on disk |
+| 20 | `revokingTwiceChangesNothing` failed | The test compared a timestamp in memory (nanoseconds) with the same one read back from PostgreSQL (microseconds) | The test reads both from the database | The code was right; the test compared two precisions |
+| 21 | A "130 quick requests, expect the last 10 limited" check showed no limiting | One `curl` per request is slow, so the token bucket refilled as fast as it drained | Re-ran as a true burst (one connection, 200 requests): 123 allowed, 77 limited | The limiter was right; the experiment was wrong |
+| 22 | An operator-chosen admin key showed its first 11 characters in the key list | The visible "prefix" was always the first 11 characters, fine for random keys but a leak for a chosen one | Operator keys store the fixed label `(operator)` | A harmless-looking display field can leak a secret |
 | 17 | `Port 8080 was already in use` when starting the app | An earlier `spring-boot:run` (or IntelliJ run) was still running | Found it with `netstat -ano \| grep 8080` and stopped it with `taskkill //PID <pid> //F` (Git Bash needs the double slash) | The startup log reaches Tomcat before this fails, so everything else is fine |
 
 ---
@@ -734,6 +740,15 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 | Request logging | One access-log line per request from a servlet filter, bodies and headers never logged | Log inside each controller; log bodies for debugging | One place cannot be forgotten; bodies will hold personal data and (Step 13) API keys |
 | Health-check logging | DEBUG when it succeeds, ERROR when it fails | Log every poll at INFO | Pollers hit it every few seconds and would bury real traffic |
 | Step 11 | Put on hold until a Paystack test account exists | Block everything on it | The rest of the system does not depend on which bank is behind the interface |
+| Authentication | API keys sent in an `X-API-Key` header, checked by plain servlet filters | Spring Security; JWT | Callers are other systems, not people. No new framework to learn or to fight with Modulith, and the filters can be tested directly |
+| Key storage | SHA-256 hash of a 256-bit random key; plain key shown once | Store keys; bcrypt | A copy of the database is useless to an attacker. A slow hash only matters for guessable passwords |
+| Authorisation | Two roles; rules by address (`/api/admin`, `/api/dev`, `/actuator` need ADMIN), with the address cleaned up first | Annotations on every controller method | Security in one reviewable place; cleaning closes `..`, `//`, `;`, `%`-code and case tricks |
+| First admin key | Supplied in the `PAYBRIDGE_ADMIN_API_KEY` environment variable, hash registered at startup; weak key stops startup | A default key; a setup endpoint | No secret in the repository, no open "create first admin" door |
+| Rate limiting | Token bucket per key (120/min), tighter for transfers (30/min); wrong-key guesses limited per address (10/min), checked before the key is examined | Fixed per-minute window; limit by address only | No window-edge cliff; limits follow the caller; a blocked address cannot test its next guess |
+| Rate-limit storage | In memory | Redis | One running copy; a shared store is needed only with several |
+| Filter registration | `FilterRegistrationBean`, never `@Component` | `@Component` | Modulith's proxies break servlet filters (problem 10) |
+| Request id on threads | Micrometer `ThreadLocalAccessor` + `context-propagation` | A `TaskDecorator` bean | Modulith overwrites decorators on the default executors (problem 18) |
+| Metrics | A few business counters; transfer outcomes counted **after commit**; `/actuator/metrics` admin-only | Expose everything; count inside the transaction | Rolled-back attempts must not be counted; metrics can reveal activity |
 
 ---
 
@@ -754,7 +769,7 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 Rules: tests are deterministic (an injectable clock, no sleeping); each test starts from clean
 data; failure cases come first for money-critical code.
 
-**Where we actually are (2026-10-13): 217 tests, 0 failures, 0 skipped.** In practice:
+**Where we actually are (2026-10-14): 350 tests, 0 failures, 0 skipped** (217 before Step 13, 133 added by it; see section 17 for the new suites). In practice:
 
 - **Unit tests:** `Money`, `Nuban`, error codes and exceptions, the transfer state machine, fee bands, and
   `AccessLogFilterTest` (9 tests, no Docker needed: it listens to the filter's real logger and checks each log level).
@@ -770,7 +785,9 @@ data; failure cases come first for money-critical code.
 - **Not yet written:** mock-server tests for the Paystack client (Step 11) and webhook tests (Step 12).
 
 **Note on `MockMvc`:** the shared `MockMvc` is built with `webAppContextSetup(...).build()`, which does **not** add servlet filters.
-So the request-id and access-log filters are tested on their own, and were also proved against a real running app.
+That is why the older tests need no API key. Tests that need the filters (`AbstractSecurityTest`) build a second `MockMvc` with the same filters in
+the same order and their own small rate limits; `SecurityFilterRegistrationTest` checks the running app installs them. Every filter was also proved
+against a real running app.
 
 > **Analogy: crash-testing a car.** You don't only drive it on a sunny day. You hit it into
 > walls on purpose, because the failure behaviour is what protects people.
@@ -844,6 +861,15 @@ Steps 1 to 10 are done. The live list of what is left, in priority order, is in
 | **Correlation (request) id** | A unique id attached to every log line of one request, returned in the `X-Request-Id` header | A luggage tag |
 | **MDC** | Mapped Diagnostic Context: a per-thread notepad the logging engine reads when writing a line | A sticky note on the desk of whoever is working |
 | **Servlet filter** | Code that wraps every web request before and after the controller | A security gate everyone walks through |
+| **API key** | A long secret sent in a header to identify a caller | A pass number |
+| **Authentication / authorisation** | Proving who you are / deciding what you may do | Showing your pass / which doors it opens |
+| **Hash (SHA-256)** | A one-way scramble; a stored fingerprint of a key instead of the key | A fingerprint you can compare but not rebuild a finger from |
+| **Bootstrap key** | The first admin key, supplied by the operator, from which all other keys are made | The owner hands over the first master key |
+| **Token bucket** | A rate limiter: a bucket of tokens that each request spends and a tap refills | A bucket of tickets with a slow tap |
+| **Brute force** | Trying many keys hoping one works | Trying every combination on a padlock |
+| **HTTP 401 / 403 / 429** | Not identified / identified but not allowed / too many requests | "Who are you?" / "Not for you" / "Slow down" |
+| **Context propagation** | Copying per-request context (such as the request id) to another thread | Handing a colleague the file with the name tag still on |
+| **Metric / counter** | A number the program keeps, shown at `/actuator/metrics` | A tally counter |
 
 ---
 
@@ -940,17 +966,18 @@ KYC tier), accounts (open, get, by number, list), dev funding, internal transfer
 notifications, beneficiaries (resolve, save, list), an external transfer, and a 404 on an unknown path. All 22 were logged. After the fix, the
 request id on each line matched the response header and the `requestId` in the error body, and a caller-supplied id (`my-demo-123`) appeared on its own line.
 
-### Still true
+### Later closed
 
-The id is **not** carried onto background threads (dispatcher, reconciler, asynchronous notification listeners), so their lines show `[]`. That is
-part of Step 13.
+When this section was written the id was **not** carried onto background threads (dispatcher, reconciler, asynchronous notification listeners), so
+their lines showed `[]`. That was closed in Step 13 (section 17).
 
 ---
 
 ## 15. Status and what is left (2026-10-13)
 
-**Built and tested:** Steps 1 to 10, with 217 passing tests. External transfers work end to end against the **simulated bank** (hold in suspense, outbox,
-dispatcher with backoff, reconciler, refunds, reversal handling, alerts). Every request is access-logged with its request id.
+**Built and tested:** Steps 1 to 10 and Step 13, with 350 passing tests. External transfers work end to end against the **simulated bank** (hold in suspense, outbox,
+dispatcher with backoff, reconciler, refunds, reversal handling, alerts). Every request is access-logged with its request id and caller; the API needs
+an API key, is rate limited, and exposes business metrics to admins (section 17).
 
 **Not built:**
 
@@ -958,10 +985,8 @@ dispatcher with backoff, reconciler, refunds, reversal handling, alerts). Every 
 |---|---|
 | Real bank gateway | Step 11 (Paystack, or a backup from section 16). `paybridge.gateway` is `fake`. |
 | Webhooks | Step 12. Needs signature checking on the raw body, de-duplication by event id, then `applyProviderResult`. The receiving side could be built and tested against the fake bank first. It would also let the "bank reverses after success" case (`7777`) be triggered by hand. |
-| Authentication | Step 13. Today anyone who can reach the app can create customers and move money. |
-| Rate limiting, metrics | Step 13. |
-| Request id on background threads | Step 13. |
-| Dev funding endpoint | `POST /api/dev/accounts/{id}/fund` creates money for anyone. Switch off with `paybridge.dev.funding-enabled=false` anywhere but a private machine. |
+| Security caveats | Rate limits are in memory (one running copy only); guess protection depends on a correct caller address behind a proxy (configured, untested behind a real one); roles are coarse (a client key can read any customer); no key expiry or "last used" time; keys travel in a header, so HTTPS is needed outside a private machine. See section 17. |
+| Dev funding endpoint | `POST /api/dev/accounts/{id}/fund` now needs an **admin** key, and is still switched by `paybridge.dev.funding-enabled`. Turn that off anywhere but a private machine. |
 | `MoneyTest` gaps | See section 7b. |
 | `fx`, `remittance`, `settlement`, full AML | Deferred by decision (section 2). |
 
@@ -994,3 +1019,75 @@ providers' public developer docs on 2026-10-13. Sign-up friction and any identit
 Paystack idea; Monnify and Kora take the bank code and account number on each payout, so `createRecipient` would return a value we construct (for example
 the bank and account number joined). Webhook signatures and payloads differ for Step 12, and status values need mapping to `SUCCESS`, `FAILED`, `PENDING`
 and `NOT_FOUND`.
+
+---
+
+## 17. Step 13: security, rate limiting and observability (2026-10-14)
+
+**Goal:** close the biggest gap (anyone who could reach the app could create customers, move money and use the endpoint that creates money) and add the
+operating tools a real service needs. The full line-by-line explanation, with analogies, is in [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md); this is the record.
+
+### What was built
+
+| Piece | Where | In one line |
+|---|---|---|
+| Key storage | `V9__create_api_key.sql`, `security/domain`, `security/repository` | One row per key; **only a SHA-256 hash is stored** |
+| Key service | `security/service/ApiKeyService` | Create (key shown once), authenticate, revoke, list |
+| Bootstrap | `security/service/AdminKeyBootstrap` | The first admin key comes from `PAYBRIDGE_ADMIN_API_KEY`; a weak one stops startup |
+| Authentication filter | `security/web/ApiKeyAuthFilter` | 401 no/invalid key, 403 wrong role, 429 blocked address; names the caller |
+| Rulebook | `security/web/AccessPolicy` | Health is open; `/api/admin`, `/api/dev`, other `/actuator` need ADMIN; the address is cleaned first |
+| Rate limiting | `security/web/RateLimitFilter`, `security/service/RateLimiter` | Token bucket per key; tighter for transfer submissions; wrong-key guesses limited per address |
+| Key management | `security/web/ApiKeyAdminController` | `POST/GET/DELETE /api/admin/api-keys` |
+| Errors from filters | `security/web/ProblemJson`, three new `ErrorCode`s | The standard error JSON, with the request id, escaped safely |
+| Caller in the log | `AccessLogFilter` (changed) | `... -> 201 (302 ms) client=mobile-app` |
+| Request id across threads | `shared/logging/RequestIdThreadLocalAccessor`, `META-INF/services`, `context-propagation` dependency | Alerts carry the id of the request that caused them |
+| Job ids | `shared/logging/JobCorrelation`, `TransferSchedules` (changed) | Timer runs get ids such as `dispatcher-30d7157c` |
+| Metrics | `transfer/service/TransferMetrics`, security meters | `paybridge.transfers`, `paybridge.security.rejections`, `paybridge.ratelimit.rejections` |
+| Settings | `application.yml` | `paybridge.security.*`, `metrics` exposed, `forward-headers-strategy: native` |
+
+The new `security` module depends only on `shared`, and nothing depends on it, so `ModularityTests` still passes and the money code is untouched.
+
+### Decisions (see also the decision register in section 9)
+
+- **Plain servlet filters, not Spring Security**: the callers are other systems, so an API key in a header is enough, and filters registered with
+  `FilterRegistrationBean` avoid the Modulith proxy problem and are easy to test.
+- **Only a hash is stored**, and the entity has no field for the plain key at all, so it cannot be logged or saved by mistake.
+- **Secure by default**: `enabled: true`; no default key; the app warns loudly if there is no admin key and refuses a weak one.
+- **Guess protection looks before it examines the key**, so a blocked address cannot find out whether its next guess was right.
+- **Fail closed**: an address that cannot be understood needs an admin key.
+
+### Verified against the real running application
+
+A throwaway PostgreSQL and the app on spare ports (not the usual ones), then real HTTP:
+
+- No key, wrong key, unknown address and metrics without a key all answered `401` in the standard error shape; health stayed open.
+- An admin created a client key; the listing showed no secrets; the operator key showed the label `(operator)`.
+- A client key created customers (`201`), but was `403` on `/api/admin/api-keys`, on `/api/dev/.../fund`, and on the disguised address
+  `/actuator/health/../metrics`; the admin key reached metrics (`200`).
+- A transfer, then its alerts: **the alert lines carried the request id of the transfer request**, and the external transfer's alert carried
+  `dispatcher-30d7157c`.
+- A burst of 200 requests on one key: 123 allowed, 77 answered `429` with `Retry-After`. 35 transfer submissions: 31 allowed, 4 limited.
+- 12 wrong keys from one address: 10 answered `401`, then `429`, and **a correct admin key from that address was refused while blocked**.
+- Metrics showed the transfer outcomes and the rejection counts matching the calls made.
+
+### Tests
+
+350 pass (217 before, 133 new): `RateLimiterTest` 9, `AccessPolicyTest` 35, `ProblemJsonTest` 4, `MdcPropagationTest` 9, `AsyncExecutorWiringTest` 1,
+`ApiKeyServiceTest` 18, `AdminKeyBootstrapTest` 6, `SecurityFilterTest` 25, `ApiKeyAdminEndpointsTest` 11, `SecurityFilterRegistrationTest` 2,
+`TransferMetricsTest` 3, plus 3 more in `AccessLogFilterTest` and 3 rows in `ErrorCodeTest`.
+
+### The lesson worth remembering
+
+The request id **still showed `[]`** after a first fix whose test passed (problem 18). Spring Modulith installs its own decorator on the default
+executors and overwrites any other. Only running the real application and reading its output exposed it. The cure was a test against the **real**
+executor (`AsyncExecutorWiringTest`), written to fail first.
+
+### Honest limits
+
+Rate limits are in memory (one running copy); guess protection relies on the caller's address being right behind a proxy (configured with
+`forward-headers-strategy: native`, **not tested behind a real proxy**); a revoked key stops working immediately because there is no cache, at the cost
+of one lookup per request; roles are coarse; no key expiry or "last used" time; HTTPS is needed anywhere others can reach the app.
+
+### What this changes for the demos
+
+Every command needs `-H "X-API-Key: ..."`, and test funding needs the **admin** key. Setup is in the README and in section 10 of `STEP-13-GUIDE.md`.
