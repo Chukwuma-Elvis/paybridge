@@ -6,6 +6,7 @@ import com.academy.paybridge.customer.api.CustomerApi;
 import com.academy.paybridge.customer.api.CustomerSummary;
 import com.academy.paybridge.notification.domain.Notification;
 import com.academy.paybridge.notification.repository.NotificationRepository;
+import com.academy.paybridge.remittance.api.RemittancePaid;
 import com.academy.paybridge.transfer.api.TransferCompleted;
 import com.academy.paybridge.transfer.api.TransferFailed;
 import com.academy.paybridge.transfer.api.TransferReversed;
@@ -64,6 +65,15 @@ public class NotificationService {
         notifyCustomer(event.customerId(), "TRANSFER_REVERSED", event.reference(),
                 "Your transfer of " + naira(event.amountMinor()) + " was reversed (" + event.reason()
                         + "). The money has been returned to your account. Ref: " + event.reference());
+    }
+
+    /** The recipient has been paid. The message names the amount and the reference, never an account or identity-document number. */
+    public void onRemittancePaid(RemittancePaid event) {
+        if (event.recipientCustomerId() == null) {
+            return;     // paid at another bank: that bank tells its own customer
+        }
+        notifyCustomer(event.recipientCustomerId(), "REMITTANCE_RECEIVED", event.reference(),
+                "You received " + naira(event.buyMinor()) + " sent from abroad. Ref: " + event.reference());
     }
 
     @Transactional(readOnly = true)
