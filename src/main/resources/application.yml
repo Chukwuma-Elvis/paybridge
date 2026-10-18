@@ -52,6 +52,28 @@ paybridge:
       FULL:
         per-transaction-minor: 500000000   # NGN 5,000,000
         daily-minor: 1000000000            # NGN 10,000,000
+  aml:
+    # Anti-money-laundering (Step 17). EVERY figure is a placeholder for learning, not compliance advice.
+    screening:
+      review-threshold: 0.85          # name similarity at or above this needs a person, even with nothing else matching
+      block-threshold: 0.95           # at or above this AND one more match (country, birth date): stop and escalate
+      corroborated-review: 0.70       # lower similarity still reviewed when BOTH country and birth date match
+    usd-limits:                       # US cents
+      sender:
+        per-transaction-minor: 500000     # USD 5,000
+        daily-minor: 1000000              # USD 10,000
+        monthly-minor: 5000000            # USD 50,000
+      recipient:
+        per-transaction-minor: 500000
+        daily-minor: 1000000
+        monthly-minor: 5000000
+    velocity:
+      window: 24h
+      max-count: 5                    # this many attempts inside the window is too many
+      threshold-minor: 300000         # USD 3,000: the amount people might try to stay under
+      band-percent: 90                # "just under" is 90% to 100% of the threshold
+      structuring-count: 3
+      structuring-window: 72h
   account:
     # Fictional 3-digit bank code used to compute the NUBAN check digit. Not a real bank.
     bank-code: "999"
@@ -80,3 +102,58 @@ paybridge:
     interval: 5s
     min-age: 10s             # only check transfers that have been quiet this long
     batch-size: 50
+  # Payment-provider webhooks (Step 12): POST /api/webhooks/{paystack|monnify}. A provider with an empty secret is switched off.
+  webhooks:
+    max-body-bytes: 65536
+    paystack:
+      secret-key: ${PAYSTACK_SECRET_KEY:}
+    monnify:
+      secret-key: ${MONNIFY_SECRET_KEY:}
+      signature-scheme: hmac-sha512      # or sha512-secret-prefix, if real deliveries are refused (see Monnify docs)
+    # Corridor partners that may tell us the sender money arrived: POST /api/webhooks/partner, signed with the partner shared secret.
+    # A partner with an empty secret is switched off. The partner code is lower case, 2 to 16 letters, digits, - or _.
+    partners:
+      fakepartner:
+        secret-key: ${FAKEPARTNER_SECRET:}
+  # Remittance (Steps 19 to 23): USD collected abroad by a corridor partner, converted, and paid out in naira.
+  remittance:
+    partners:
+      - fakepartner                   # partners allowed to send remittances; each also needs a webhook secret above
+    funding-window: 24h               # the partner must confirm the sender money within this long, or the remittance fails
+    screening-gate-enabled: true      # DEVELOPMENT ONLY: false skips screening and USD limits. Never turn it off for real use.
+    processor:
+      enabled: true                   # the engine that converts, pays out, checks payouts and refunds
+      interval: 3s
+      batch-size: 20
+      max-attempts: 5                 # a step that keeps failing is retried this many times, then a funded remittance is refunded
+      base-delay: 5s
+      payout-poll-delay: 5s
+    funding:
+      min-age: 30s                    # ask the partner about a remittance that has waited this long for its confirmation
+  # Settlement and reconciliation (Steps 24 to 26)
+  settlement:
+    partners:
+      - fakepartner
+    tolerance:
+      amount-minor: 1                 # two amounts this close (in cents) count as the same
+      date-days: 1                    # two dates this close count as the same day
+    statement:
+      max-bytes: 1048576              # the largest statement file accepted (1 MB)
+      max-rows: 5000
+    closer:
+      enabled: true                   # the timer that cuts each partner account into batches
+      interval: 1h
+      lag: 2m                         # lines newer than this wait for the next batch
+  # Foreign exchange (Steps 14 to 18). All figures are placeholders.
+  fx:
+    usd-accounts-enabled: false       # customers may not open USD accounts unless this is true
+    provider: fake                    # the built-in scriptable rate source; a real source is another class behind RateProvider
+    max-rate-age: 5m                  # a rate older than this is refused for new quotes
+    spike-threshold-percent: 5        # a rate that jumps more than this from the last one is held for an admin
+    default-spread-bps: 100           # our margin: 100 basis points = 1%
+    quote-ttl: 5m                     # how long a quote stays valid
+    min-rate: 100                     # a rate outside min..max is treated as a bad feed
+    max-rate: 5000
+    refresher:
+      enabled: true
+      interval: 60s

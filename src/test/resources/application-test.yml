@@ -9,3 +9,29 @@ paybridge:
   reconciler:
     enabled: false
     min-age: 0s
+  webhooks:
+    paystack:
+      secret-key: test-paystack-secret-not-a-real-key
+    monnify:
+      secret-key: test-monnify-secret-not-a-real-key
+    partners:
+      fakepartner:
+        secret-key: test-partner-secret-not-a-real-key
+      otherpartner:
+        secret-key: test-other-partner-secret-not-real
+  fx:
+    refresher:
+      enabled: false
+  settlement:
+    closer:
+      enabled: false
+  remittance:
+    partners:
+      - fakepartner
+      - otherpartner
+    processor:
+      enabled: false
+      base-delay: 0s
+      payout-poll-delay: 0s
+    funding:
+      min-age: 0s

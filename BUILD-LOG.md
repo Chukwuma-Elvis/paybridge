@@ -7,7 +7,7 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 > If a term is new, look it up in the [Glossary](#12-glossary). Status markers:
 > ✅ done · 🔄 in progress · ⏳ not started.
 
-**Last updated:** 2026-10-14 · **Current position:** Steps 1 to 10 and **Step 13 (security, rate limiting, observability)** are built and verified (350 automated tests, plus live runs against the real application). **Step 11 (the real Paystack gateway) and Step 12 (webhooks) are not done**; see [section 15](#15-status-and-what-is-left-2026-10-13) for what is left and [section 17](#17-step-13-security-rate-limiting-and-observability-2026-10-14) for Step 13.
+**Last updated:** 2026-10-14 · **Current position:** Steps 1 to 10, **Step 12 (provider webhooks)** and **Step 13 (security, rate limiting, observability)** are built and verified (488 automated tests, plus live runs against the real application). **Step 11 (the real Paystack/Monnify clients) is not done.** A code-free plan for `fx`, `remittance` and `settlement` (Steps 14 to 28) is in `plans/fx-remittance-settlement.plan.md`. See [section 15](#15-status-and-what-is-left-2026-10-13) for what is left, [section 17](#17-step-13-security-rate-limiting-and-observability-2026-10-14) for Step 13 and [section 18](#18-step-12-provider-webhooks-and-the-moneytest-gaps-2026-10-14) for Step 12.
 
 ---
 
@@ -30,6 +30,8 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 15. [Status and what is left](#15-status-and-what-is-left-2026-10-13)
 16. [Payment providers other than Paystack](#16-payment-providers-other-than-paystack-researched-2026-10-13)
 17. [Step 13: security, rate limiting and observability](#17-step-13-security-rate-limiting-and-observability-2026-10-14)
+18. [Step 12: provider webhooks, and the `MoneyTest` gaps](#18-step-12-provider-webhooks-and-the-moneytest-gaps-2026-10-14)
+19. [The plan for `fx`, `remittance` and `settlement`](#19-the-plan-for-fx-remittance-and-settlement-2026-10-14)
 
 ---
 
@@ -307,7 +309,7 @@ timeouts, failures and reversals on demand.
 | Step | What | Status |
 |---|---|---|
 | 1 | Project skeleton (build, config, database, foundation tests) | ✅ |
-| 2 | `shared`: `Money`, error model, auditing, correlation IDs | ✅ (`MoneyTest` gaps still open) |
+| 2 | `shared`: `Money`, error model, auditing, correlation IDs | ✅ (`MoneyTest` gaps closed 2026-10-14: 45 tests) |
 | 3 | `customer`: entity, KYC tier, API | ✅ |
 | 4 | `account`: NUBAN numbers, balances, system accounts | ✅ |
 | 5 | `ledger`: journal entries and lines, balanced-only posting | ✅ |
@@ -316,8 +318,8 @@ timeouts, failures and reversals on demand.
 | 8 | `compliance` (thin): per-tier limits | ✅ |
 | 9 | `notification` (thin): event listeners | ✅ |
 | 10 | `transfer` (external) with a fake gateway, outbox, fees, reversals | ✅ |
-| 11 | Paystack client, tested with WireMock | ⏸ on hold (needs a Paystack test account; see section 16 for backups) |
-| 12 | Webhooks and reconciliation | ⏳ |
+| 11 | Paystack (or Monnify) client, tested with a mock server | ⏸ on hold (needs a test account; see section 16 for backups). The webhook half (Step 12) is done |
+| 12 | Provider webhooks (Paystack and Monnify format): signature, de-duplication, cross-check, manual review | ✅ (section 18; `STEP-12-GUIDE.md`) |
 | 13 | Hardening: API-key authentication, rate limiting, logging, metrics, request id on background threads | ✅ (sections 14 and 17; line-by-line explanation in `STEP-13-GUIDE.md`) |
 
 Each step ends with passing tests before the next one starts.
@@ -606,7 +608,7 @@ It can be negative (ledger lines are signed), refuses to mix currencies, and use
 **Review findings, both fixed:** the null-check message said "must be null" (it must say
 "must not be null"), and a method was named `Zero` instead of `zero` (Java methods start lowercase).
 
-**Open item:** `MoneyTest` has 9 tests. Still to write: normal `negate`, the sign checks,
+**Open item (closed 2026-10-14, `MoneyTest` now has 45 tests):** at the time `MoneyTest` had 9 tests. Still to write then: normal `negate`, the sign checks,
 equality and `hashCode`, `compareTo` ordering, currency mismatch for `subtract` and `compareTo`,
 and immutability of the originals after `add` and `subtract`.
 
@@ -674,7 +676,7 @@ that the existing 31 tests still pass. **This is test debt.** It must be paid ba
 and Step 7 (transfers), where money correctness depends on it. Debt so far: the missing `MoneyTest` groups
 above, and tests for everything from 2.4 onward.
 
-**Update (2026-10-13): the debt is paid except `MoneyTest`.** Steps 3 to 10 were written with tests, and the suite is now
+**Update (2026-10-13): the debt is paid except `MoneyTest` (and that was closed on 2026-10-14).** Steps 3 to 10 were written with tests, and the suite is now
 **217 tests**. Still open: `negate`, the sign checks, equality and `hashCode`, `compareTo` ordering, currency mismatch on
 `subtract` and `compareTo`, and immutability of the originals.
 
@@ -707,6 +709,9 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 | 20 | `revokingTwiceChangesNothing` failed | The test compared a timestamp in memory (nanoseconds) with the same one read back from PostgreSQL (microseconds) | The test reads both from the database | The code was right; the test compared two precisions |
 | 21 | A "130 quick requests, expect the last 10 limited" check showed no limiting | One `curl` per request is slow, so the token bucket refilled as fast as it drained | Re-ran as a true burst (one connection, 200 requests): 123 allowed, 77 limited | The limiter was right; the experiment was wrong |
 | 22 | An operator-chosen admin key showed its first 11 characters in the key list | The visible "prefix" was always the first 11 characters, fine for random keys but a leak for a chosen one | Operator keys store the fixed label `(operator)` | A harmless-looking display field can leak a secret |
+| 23 | A shell command with long heredocs failed to parse, so no file was written (2026-10-14) | Quote characters inside very long inline shell text | Wrote the files with the file tool instead | When a command is mostly text, write a file, do not pipe it through the shell |
+| 24 | A Node edit script failed on backticks inside single quotes | Shell quoting | Put the script in a file and ran that | Same lesson |
+| 25 | A multi-line replacement silently did not apply to one table row | That part of the file has Windows line endings (`\r\n`) | Matched with a regex that accepts both | Check that an edit really applied; do not assume |
 | 17 | `Port 8080 was already in use` when starting the app | An earlier `spring-boot:run` (or IntelliJ run) was still running | Found it with `netstat -ano \| grep 8080` and stopped it with `taskkill //PID <pid> //F` (Git Bash needs the double slash) | The startup log reaches Tomcat before this fails, so everything else is fine |
 
 ---
@@ -749,6 +754,15 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 | Filter registration | `FilterRegistrationBean`, never `@Component` | `@Component` | Modulith's proxies break servlet filters (problem 10) |
 | Request id on threads | Micrometer `ThreadLocalAccessor` + `context-propagation` | A `TaskDecorator` bean | Modulith overwrites decorators on the default executors (problem 18) |
 | Metrics | A few business counters; transfer outcomes counted **after commit**; `/actuator/metrics` admin-only | Expose everything; count inside the transaction | Rolled-back attempts must not be counted; metrics can reveal activity |
+| Webhook authenticity | The provider's signature, checked on the raw bytes **before** anything is read; constant-time comparison; the address is open (no API key) but rate limited per address | Make providers use an API key; parse first then verify | Providers cannot send our key; a parsed-then-reserialised body would no longer match the signature |
+| Webhook adapters | One small class per provider behind `WebhookProvider`, translating into a neutral `ProviderEvent`; the pipeline is shared | A pipeline per provider | A new provider is one class; the safety checks are inherited |
+| Webhook idempotency | `INSERT ... ON CONFLICT DO NOTHING` on a unique (provider, event id); finished events are duplicates, failed or abandoned ones are retaken | Check in application code | Only a unique constraint is race-free |
+| Webhook cross-check | Amount, currency and transfer type must agree with our record, else `AMOUNT_MISMATCH` and nothing is applied | Trust a signed payload | A signed message can still be wrong (bug, replay, naira versus kobo) |
+| Webhook contradictions | A success for a transfer already refunded is recorded as `MANUAL_REVIEW`, moves no money, and answers 200 | Throw and let the provider retry for ever | It is a genuine disagreement only a person can settle |
+| Webhook responses | Almost everything answers 200 so the provider stops resending; only 401/400/404/409/413/500 are non-200 | Answer 4xx for duplicates and unmatched events | An error status makes providers resend |
+| Monnify signature | Default HMAC-SHA512, switchable to SHA-512 of (secret + body) by a setting | Pick one and hope | Monnify's own documentation describes both |
+| Webhook record | Store a SHA-256 fingerprint and metadata, never the raw body | Store the body | The body contains the recipient's name and account details |
+| Next phase | A code-free, step-by-step plan (Steps 14 to 28) before any code for `fx`, `remittance`, `settlement` | Start coding | The ledger, tests and external-payout code all need changes first (see section 19) |
 
 ---
 
@@ -769,7 +783,7 @@ A log of real stumbling blocks is the most valuable part of a learning record.
 Rules: tests are deterministic (an injectable clock, no sleeping); each test starts from clean
 data; failure cases come first for money-critical code.
 
-**Where we actually are (2026-10-14): 350 tests, 0 failures, 0 skipped** (217 before Step 13, 133 added by it; see section 17 for the new suites). In practice:
+**Where we actually are (2026-10-14): 488 tests, 0 failures, 0 skipped** (217 before Step 13, 133 added by it, 138 added by Step 12 and the `MoneyTest` work; see sections 17 and 18 for the new suites). In practice:
 
 - **Unit tests:** `Money`, `Nuban`, error codes and exceptions, the transfer state machine, fee bands, and
   `AccessLogFilterTest` (9 tests, no Docker needed: it listens to the filter's real logger and checks each log level).
@@ -782,7 +796,7 @@ data; failure cases come first for money-critical code.
 - **External-transfer tests** (`ExternalTransferTest`, 28; `BeneficiaryTest`, 8) drive the fake bank's behaviours: timeouts,
   refusals, slow success, reversal after success, and late success after a refund.
 - **`ModularityTests`** is the Modulith structure check.
-- **Not yet written:** mock-server tests for the Paystack client (Step 11) and webhook tests (Step 12).
+- **Not yet written:** mock-server tests for the real provider clients (Step 11). The webhook tests exist (section 18).
 
 **Note on `MockMvc`:** the shared `MockMvc` is built with `webAppContextSetup(...).build()`, which does **not** add servlet filters.
 That is why the older tests need no API key. Tests that need the filters (`AbstractSecurityTest`) build a second `MockMvc` with the same filters in
@@ -870,6 +884,12 @@ Steps 1 to 10 are done. The live list of what is left, in priority order, is in
 | **HTTP 401 / 403 / 429** | Not identified / identified but not allowed / too many requests | "Who are you?" / "Not for you" / "Slow down" |
 | **Context propagation** | Copying per-request context (such as the request id) to another thread | Handing a colleague the file with the name tag still on |
 | **Metric / counter** | A number the program keeps, shown at `/actuator/metrics` | A tally counter |
+| **HMAC-SHA512 signature** | A one-way seal made from a message and a shared secret; the receiver redoes the sum and compares | A wax seal only two people can press |
+| **Raw body** | The request bytes exactly as sent; signatures cover these, not the parsed JSON | The sealed envelope, not a retyped copy |
+| **Constant-time comparison** | Comparing without stopping at the first difference, so timing leaks nothing | Checking every digit of a lock code |
+| **Webhook** | A provider calling us with news instead of us asking | The courier ringing the doorbell |
+| **Manual review** | A case the software refuses to decide and records for a person | A supervisor's tray |
+| **Corridor / spread / quote** | A route between currencies / the house's margin on the rate / a locked, single-use rate | Used in the plan for the next phase (section 19) |
 
 ---
 
@@ -975,7 +995,7 @@ their lines showed `[]`. That was closed in Step 13 (section 17).
 
 ## 15. Status and what is left (2026-10-13)
 
-**Built and tested:** Steps 1 to 10 and Step 13, with 350 passing tests. External transfers work end to end against the **simulated bank** (hold in suspense, outbox,
+**Built and tested:** Steps 1 to 10, 12 and 13, with 488 passing tests. External transfers work end to end against the **simulated bank** (hold in suspense, outbox,
 dispatcher with backoff, reconciler, refunds, reversal handling, alerts). Every request is access-logged with its request id and caller; the API needs
 an API key, is rate limited, and exposes business metrics to admins (section 17).
 
@@ -984,10 +1004,9 @@ an API key, is rate limited, and exposes business metrics to admins (section 17)
 | Item | Detail |
 |---|---|
 | Real bank gateway | Step 11 (Paystack, or a backup from section 16). `paybridge.gateway` is `fake`. |
-| Webhooks | Step 12. Needs signature checking on the raw body, de-duplication by event id, then `applyProviderResult`. The receiving side could be built and tested against the fake bank first. It would also let the "bank reverses after success" case (`7777`) be triggered by hand. |
+| Webhooks | **Done in Step 12** (section 18). What remains is comparing the payload field names with a real sandbox delivery per provider. |
 | Security caveats | Rate limits are in memory (one running copy only); guess protection depends on a correct caller address behind a proxy (configured, untested behind a real one); roles are coarse (a client key can read any customer); no key expiry or "last used" time; keys travel in a header, so HTTPS is needed outside a private machine. See section 17. |
 | Dev funding endpoint | `POST /api/dev/accounts/{id}/fund` now needs an **admin** key, and is still switched by `paybridge.dev.funding-enabled`. Turn that off anywhere but a private machine. |
-| `MoneyTest` gaps | See section 7b. |
 | `fx`, `remittance`, `settlement`, full AML | Deferred by decision (section 2). |
 
 **Placeholders to check before trusting:** fee bands (NGN 10 / 25 / 50), per-tier limits, and the fictional bank code `999`.
@@ -1091,3 +1110,86 @@ of one lookup per request; roles are coarse; no key expiry or "last used" time; 
 ### What this changes for the demos
 
 Every command needs `-H "X-API-Key: ..."`, and test funding needs the **admin** key. Setup is in the README and in section 10 of `STEP-13-GUIDE.md`.
+
+---
+
+## 18. Step 12: provider webhooks, and the `MoneyTest` gaps (2026-10-14)
+
+**Goal:** let a payment provider *tell* PayBridge what became of an external transfer (including a **reversal after success**, which polling could never reveal), compatible with Paystack or Monnify, using what already existed. The full line-by-line explanation is in [`STEP-12-GUIDE.md`](STEP-12-GUIDE.md); this is the record.
+
+### What was built
+
+| Piece | Where | In one line |
+|---|---|---|
+| Endpoint | `transfer/web/WebhookController` | `POST /api/webhooks/{provider}`; reads the raw body, never more than 64 KB |
+| Pipeline | `transfer/service/WebhookService` | known provider, signature, parse, claim, act or ignore, match, cross-check, apply |
+| Bookkeeping | `transfer/service/WebhookRecorder`, `WebhookEvent`, `WebhookStatus`, `WebhookEventRepository`, `V10__create_webhook_event.sql` | A delivery log with a unique (provider, event id); `ON CONFLICT DO NOTHING` claim; failed or abandoned events are retaken |
+| Adapters | `transfer/client/PaystackWebhookProvider`, `MonnifyWebhookProvider` behind `WebhookProvider` | Header, signature recipe, event names and JSON for each provider, translated to a neutral `ProviderEvent` |
+| Signature maths | `transfer/client/Hmac` | HMAC-SHA512 (checked against the RFC 4231 test vector), constant-time comparison |
+| Safe JSON reading | `transfer/client/WebhookJson` | Exact naira-to-kobo conversion with `BigDecimal`; refuses 3 decimal places and negatives |
+| Security | `AccessPolicy` (`SIGNED_WEBHOOK`), `ApiKeyAuthFilter`, `RateLimitFilter`, `SecurityProperties` | The address needs no API key but is rate limited per address (600 a minute) |
+| Config | `paybridge.webhooks.*` | Secrets from `PAYSTACK_SECRET_KEY` / `MONNIFY_SECRET_KEY`; a provider with no secret is off |
+
+`ExternalTransferService` was **not changed**: a webhook calls the same idempotent `applyProviderResult` as the dispatcher and reconciler, so the three can race safely.
+
+### Outcomes
+
+`APPLIED`, `DUPLICATE`, `IGNORED` (not a transfer outcome), `UNMATCHED` (unknown reference, or an internal transfer), `AMOUNT_MISMATCH` (amount or currency disagree; nothing applied), `MANUAL_REVIEW` (for example a success for a transfer already refunded; nothing applied). All answer 200. Non-200: 401 bad signature, 400 unreadable, 404 unknown or unconfigured provider, 409 being processed, 413 too large, 500 unexpected failure (recorded `FAILED`, so the provider's retry is taken).
+
+### What is verified, and what is not
+
+- **Verified by research:** Paystack signs the raw body with HMAC-SHA512 using the secret key (`x-paystack-signature`, hex); its transfer events are `transfer.success`, `transfer.failed`, `transfer.reversed`. Monnify uses the `monnify-signature` header and the disbursement events `SUCCESSFUL_DISBURSEMENT`, `FAILED_DISBURSEMENT`, `REVERSED_DISBURSEMENT`.
+- **Not verified:** the JSON field names inside each payload (from third-party guides, not a live delivery); the failed and reversed Monnify payloads (only the success sample was found); and Monnify's **signature recipe**, which its own documentation describes two ways (so it is a setting, default HMAC). One source claims the Monnify sandbox does not sign at all. The tests prove PayBridge does what it intends with the fixtures, not that the providers send those fixtures.
+- Provider documentation pages blocked automated fetching (HTTP 403), so the research came from search results and third-party guides.
+
+### Live proof (real application, throwaway database, spare port)
+
+Real HTTP with signatures computed by `openssl`: a success webhook finished a transfer the fake bank left processing; the identical delivery again answered `DUPLICATE`; a forged signature and a missing signature gave 401; a wrong amount gave `AMOUNT_MISMATCH` with the transfer unchanged; the real failure then refunded everything; a **success followed by a reversal** (payee ending 7777) left the customer fully refunded (this could not be triggered by hand before); Monnify success read naira as kobo; an unknown reference was `UNMATCHED`; an unknown provider was 404; other endpoints still needed a key. The `webhook_event` table held no bodies. The sum of all balances was 0. None of the three secrets appeared anywhere in the log.
+
+### Tests
+
+488 pass (350 before; 138 new): `HmacTest` 12, `PaystackWebhookProviderTest` 20, `MonnifyWebhookProviderTest` 13, `WebhookRecorderTest` 9, `WebhookTest` 37 (including 20 simultaneous identical deliveries applying exactly once), 9 more `AccessPolicyTest` cases, one more `ErrorCodeTest` row, and the 36 new `MoneyTest` cases.
+
+### `MoneyTest` gaps closed
+
+`MoneyTest` grew from 9 to 45 tests: `negate` (positive, negative, zero, twice, currency kept, plus-its-negation is zero), the sign checks (including extremes), equality and `hashCode` (including a set), `compareTo` ordering (overflow-safe at the extremes, and sorting), currency mismatch on `subtract` and `compareTo` with both currencies named, and immutability (originals unchanged after `add`, `subtract`, `negate` and after a failed operation). This was the last open test debt.
+
+### Honest limits
+
+No source-IP allow-list; the webhook rate limit is per address and in memory; a 409 invites a retry until a claim is 2 minutes old; only transfer outcomes are handled (pay-ins are recorded as ignored); `webhook_event` is never cleaned up; there is no admin view of flagged events (SQL and the `ERROR` log lines today).
+
+### Lessons
+
+- A shell command that is mostly text is better written as a file; a long heredoc failed to parse and wrote nothing.
+- Research that cannot be confirmed must be written down as unconfirmed, in the code comments, the guide and here.
+
+---
+
+## 19. The plan for `fx`, `remittance` and `settlement` (2026-10-14)
+
+A detailed, **code-free** execution plan is in [`plans/fx-remittance-settlement.plan.md`](plans/fx-remittance-settlement.plan.md), written in the `blueprint` skill's format (context brief, tasks, tests first, verification, exit criteria and rollback per step; dependency graph; parallel-step detection; review gate; anti-patterns; plan mutation protocol) with nine decision records in the `architecture-decision-records` format. Nothing in it has been built or approved.
+
+**Shape:** Steps 14 to 28 in five phases: **A** multi-currency foundation (14); **B** FX rates, quotes, conversion posting and a compliance extension (15 to 18); **C** the remittance state machine, screening gate, partner funding, conversion, payout and refund (19 to 23); **D** settlement batches, statement matching and break resolution (24 to 26); **E** end-to-end, load and security review (27 and 28). Critical path: 14, 15, 16, 18, 22, 24, 25, 26, 27, 28.
+
+**Findings from checking the code that shaped the plan**
+
+1. USD accounts are blocked only in code (`AccountService`); the database already allows USD.
+2. The ledger forbids a mixed-currency entry, so a currency conversion must be **two linked entries** with per-currency position accounts.
+3. **Four existing tests assert that all balances sum to zero across currencies.** That becomes false once USD exists, so the invariant must become *per currency* first (Step 14).
+4. `ExternalTransferService` assumes the source is a customer account; paying a remittance recipient at another bank needs a system-initiated variant.
+5. Step 12's webhook pipeline ignores everything that is not a transfer outcome; partner funding events need it generalised by event kind.
+6. The `fx`, `remittance` and `settlement` folders are empty and have no `package-info.java`.
+
+**Not decided (open questions for compliance counsel and you):** regulation and licensing, record retention, which sanctions lists, real or simulated partner, USD account numbering, FX revenue recognition, fees, real limits, settlement cut-offs. Every threshold in the plan is a configurable placeholder. The plan's adversarial review was done by its author, not a separate sub-agent, and says so.
+
+
+---
+
+## Steps 14 to 28: FX, remittance and settlement
+
+Built from `plans/fx-remittance-settlement.plan.md`; explained in full in [FX-REMITTANCE-SETTLEMENT-GUIDE.md](FX-REMITTANCE-SETTLEMENT-GUIDE.md).
+
+* New modules: `fx` (rates, quotes, conversion), `remittance` (state machine, screening gate, funding, convert/pay/refund), `settlement` (batches, statements, matching, breaks). Extended: `compliance` (screening cases, USD limits, velocity), `transfer` (system payouts, partner-funding webhook kind), `ledger` (line reads), `notification`.
+* Migrations V11 to V19.
+* Bugs found and fixed by the new tests: stale entity caching in account lookups; a `clearAutomatically` query detaching the remittance mid-transaction; reconciler/funding checks starving behind permanently-pending items; settlement payment lines being re-paid by the next batch.
+* Nothing is wired to a real rate source, corridor partner or sanctions list; all are fakes with placeholder figures.

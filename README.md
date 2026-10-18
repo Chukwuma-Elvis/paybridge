@@ -5,12 +5,12 @@
 [![Spring Modulith](https://img.shields.io/badge/Spring%20Modulith-2.1.1-6DB33F?style=for-the-badge)](https://spring.io/projects/spring-modulith)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Maven](https://img.shields.io/badge/Maven-Wrapper-C71A36?style=for-the-badge&logo=apachemaven&logoColor=white)](https://maven.apache.org/)
-[![Tests](https://img.shields.io/badge/Tests-350%20passing-brightgreen?style=for-the-badge)](#-testing--verification)
+[![Tests](https://img.shields.io/badge/Tests-488%20passing-brightgreen?style=for-the-badge)](#-testing--verification)
 
 > **A Core Banking & Settlement Engine engineered as a Spring Boot Modular Monolith.**
 > Built to model real-world financial infrastructure: double-entry bookkeeping, zero-overdraft concurrency locking, strict idempotency, an asynchronous outbox gateway dispatcher with reconciliation, and tiered compliance limits.
 
-**Status (2026-10-14):** Phase 1, local NGN-to-NGN transfers, is built and now **secured with API keys and rate limits**. Internal transfers are complete; external transfers run end to end against a **simulated bank**. The real Paystack connection and webhooks are **not built yet**. See [Project Status](#-project-status) for the honest list, [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md) for a line-by-line explanation of the security work, and [`BUILD-LOG.md`](BUILD-LOG.md) for every decision and the reasoning behind it.
+**Status (2026-10-14):** Phase 1, local NGN-to-NGN transfers, is built and now **secured with API keys and rate limits**. Internal transfers are complete; external transfers run end to end against a **simulated bank**. **Payment-provider webhooks** (Paystack and Monnify format) are built and tested, so a transfer can now be finished, refunded or reversed by the provider telling us. The real provider *clients* (initiating transfers with Paystack or Monnify) are **not built yet**. See [Project Status](#-project-status) for the honest list, [`STEP-12-GUIDE.md`](STEP-12-GUIDE.md) and [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md) for line-by-line explanations, [`plans/fx-remittance-settlement.plan.md`](plans/fx-remittance-settlement.plan.md) for the plan for the next phase, and [`BUILD-LOG.md`](BUILD-LOG.md) for every decision and the reasoning behind it.
 
 ---
 
@@ -85,7 +85,7 @@ Each module is split into layers: `api/` (the public front desk), `domain/`, `re
 | **`security`** | API keys, roles, key-checking and rate-limiting filters, key management | `/api/admin/api-keys` (nothing else depends on this module) | `api_key` |
 | **`shared`** | `Money` value object, error codes, auditing, request correlation | Open module (used by all) | `event_publication` |
 
-The database schema is versioned with Flyway migrations `V1` to `V9` (`src/main/resources/db/migration`), and Hibernate runs in `validate` mode: it checks the tables but never changes them.
+The database schema is versioned with Flyway migrations `V1` to `V10` (`src/main/resources/db/migration`), and Hibernate runs in `validate` mode: it checks the tables but never changes them.
 
 ---
 
@@ -318,7 +318,10 @@ All amounts are integer **kobo** ($100\text{ kobo} = ₦1.00$). Every transfer n
 * `GET /api/admin/api-keys`: list keys (name, prefix, role, active). Never shows a key or hash.
 * `DELETE /api/admin/api-keys/{id}`: revoke a key. `204`; repeating is harmless.
 
-### 8. Operations
+### 8. Provider Webhooks (open, signed)
+* `POST /api/webhooks/paystack` and `POST /api/webhooks/monnify`: a payment provider reports what became of a transfer. **No API key**: the provider proves itself with its signature (`x-paystack-signature` / `monnify-signature`), checked on the raw bytes before anything is read. Answers `200` with `{"result": "APPLIED | DUPLICATE | IGNORED | UNMATCHED | AMOUNT_MISMATCH | MANUAL_REVIEW"}`; `401` bad signature; `400` unreadable body; `404` unknown or unconfigured provider; `409` already being processed; `413` body over 64 KB. A provider is switched off until its secret is set. See [`STEP-12-GUIDE.md`](STEP-12-GUIDE.md).
+
+### 9. Operations
 * `GET /actuator/health`: health check. **The only open address.**
 * `GET /actuator/metrics`, `/actuator/metrics/{name}`: metrics (admin key). Business meters: `paybridge.transfers` (tags `type`, `outcome`), `paybridge.security.rejections` (tag `reason`), `paybridge.ratelimit.rejections` (tag `limiter`).
 
@@ -397,7 +400,10 @@ Settings live in `src/main/resources/application.yml`.
 |---|---|
 | `paybridge.security.enabled` | API-key checking. On by default. `false` lets every request through (private developer machine only; the app warns at startup). |
 | `paybridge.security.bootstrap-admin-key` | The first admin key, read from the **`PAYBRIDGE_ADMIN_API_KEY`** environment variable (at least 32 characters of letters, digits, `_` or `-`; the app refuses to start with a weaker one). Never write it in a file. |
-| `paybridge.security.rate-limit.*` | `requests-per-minute` (120, per key), `transfers-per-minute` (30, per key, transfer submissions only), `failed-auth-per-minute` (10, per address, requests carrying an unknown key). |
+| `paybridge.security.rate-limit.*` | `requests-per-minute` (120, per key), `transfers-per-minute` (30, per key, transfer submissions only), `failed-auth-per-minute` (10, per address, requests carrying an unknown key), `webhooks-per-minute` (600, per address, provider webhooks). |
+| `paybridge.webhooks.paystack.secret-key`, `paybridge.webhooks.monnify.secret-key` | Each provider's secret, from `PAYSTACK_SECRET_KEY` / `MONNIFY_SECRET_KEY`. **Empty means that provider is off.** Never write them in a file. |
+| `paybridge.webhooks.monnify.signature-scheme` | `hmac-sha512` (default) or `sha512-secret-prefix`: Monnify's documentation describes its signature two ways, so this is switchable. |
+| `paybridge.webhooks.max-body-bytes` | Largest webhook body read (65536). |
 | `paybridge.dev.funding-enabled` | Switches the test funding endpoint (which also needs an admin key). **Turn it off anywhere but a private machine:** it creates money. |
 | `paybridge.gateway` | Which bank sits behind external transfers. `fake` is the built-in simulated bank; `paystack` arrives in Step 11. |
 | `paybridge.account.bank-code` | A fictional bank code (`999`) used for the NUBAN check digit. |
@@ -463,7 +469,7 @@ If `Port 8080 was already in use`, an earlier copy of the app is still running: 
 ./mvnw test
 ```
 
-**350 tests, all passing.** Most start a real PostgreSQL through Testcontainers, so **Docker must be running**. If many tests fail at once with "ApplicationContext failure threshold exceeded", check Docker first.
+**488 tests, all passing.** Most start a real PostgreSQL through Testcontainers, so **Docker must be running**. If many tests fail at once with "ApplicationContext failure threshold exceeded", check Docker first.
 
 ### Key Test Suites
 
@@ -490,7 +496,7 @@ The shared database is reused across tests, so each test creates its own custome
 | Step | What | Status |
 |---|---|---|
 | 1 | Project skeleton: build, config, database, foundation tests | ✅ |
-| 2 | `shared`: `Money`, error model, auditing, correlation ids | ✅ (small `MoneyTest` gaps open) |
+| 2 | `shared`: `Money`, error model, auditing, correlation ids | ✅ (`MoneyTest` now 45 tests; the gaps are closed) |
 | 3 | `customer` | ✅ |
 | 4 | `account`: NUBAN numbers, balances, system accounts | ✅ |
 | 5 | `ledger`: balanced, append-only posting | ✅ |
@@ -500,16 +506,15 @@ The shared database is reused across tests, so each test creates its own custome
 | 9 | `notification`: event-driven alerts | ✅ |
 | 10 | External transfers: fake gateway, outbox, fees, reversals | ✅ |
 | 11 | Real Paystack client | ⏸ on hold (needs a Paystack test account) |
-| 12 | Webhooks and reconciliation | ⏳ |
+| 12 | Provider webhooks (Paystack and Monnify format): signature, de-duplication, cross-check, manual review | ✅ (see [`STEP-12-GUIDE.md`](STEP-12-GUIDE.md); payload field names not yet compared with a live delivery) |
 | 13 | Hardening: API-key authentication, rate limiting, request logging, metrics, request id on background threads | ✅ (see [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md)) |
 
 ### Not built yet
 
 * **The real bank connection (Step 11):** `paybridge.gateway` is `fake`. The code talks to a `TransferGateway` interface, so the real provider is one new class.
-* **Webhooks (Step 12):** signature checking on the raw body, de-duplication by event id, then applying the result.
+* **Real provider clients:** webhooks are built, but initiating transfers with Paystack or Monnify is not. The webhook payload field names come from third-party guides and must be compared with a real sandbox delivery (the Monnify sandbox may not sign webhooks at all).
 * **Security gaps worth knowing about:** rate limits are in memory (right for one running copy; several copies would need a shared store); guess protection depends on the caller's address being right behind a hosting proxy (configured, but not tested behind a real one); roles are coarse (any client key can read any customer); no key expiry or "last used" time.
-* **`MoneyTest` gaps:** `negate`, sign checks, equality and `hashCode`, `compareTo`, and immutability.
-* **Later phases:** `fx`, `remittance`, `settlement` and full AML screening.
+* **Later phases:** `fx`, `remittance`, `settlement` and full AML screening. A detailed, code-free execution plan (Steps 14 to 28, with decision records) is in [`plans/fx-remittance-settlement.plan.md`](plans/fx-remittance-settlement.plan.md).
 * **Placeholders to check before trusting:** the fee bands, the per-tier limits and the fictional bank code `999`.
 
 ### Not part of this copy
@@ -520,7 +525,14 @@ This copy is the backend only. A React front end, Swagger UI, Docker and Render 
 
 ## 📚 Further Reading
 
+* [`STEP-12-GUIDE.md`](STEP-12-GUIDE.md): webhooks explained line by line, with analogies, a demo recipe using `openssl`, what is and is not verified about each provider, and self-test questions.
+* [`plans/fx-remittance-settlement.plan.md`](plans/fx-remittance-settlement.plan.md): the execution plan for the `fx`, `remittance` and `settlement` modules (no code).
 * [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md): the security, rate-limiting and observability work explained line by line, with analogies, end-to-end traces and self-test questions.
 * [`BUILD-LOG.md`](BUILD-LOG.md): every decision with its reason, the problems met and how they were solved, the testing strategy, what is left, and a glossary.
 * [`Sandbox.md`](Sandbox.md): from the assignment, a list of payment providers' free test environments.
 * `compose.yaml`: the local PostgreSQL container; `src/main/resources/db/migration`: the Flyway migrations.
+
+
+## FX, remittance and settlement (Steps 14 to 28)
+
+PayBridge can now take USD from a corridor partner, convert it to naira at a locked quote, pay the recipient (inside PayBridge or at another bank), refund on failure, and settle with the partner. See [FX-REMITTANCE-SETTLEMENT-GUIDE.md](FX-REMITTANCE-SETTLEMENT-GUIDE.md) for how it works and how to drive it with the built-in fakes. All rates, limits and screening data are placeholders.
