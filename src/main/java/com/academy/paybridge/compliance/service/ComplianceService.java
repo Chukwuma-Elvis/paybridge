@@ -1,7 +1,13 @@
 package com.academy.paybridge.compliance.service;
 
+import com.academy.paybridge.compliance.api.CaseDecision;
+import com.academy.paybridge.compliance.api.CaseStatus;
+import com.academy.paybridge.compliance.api.CaseView;
 import com.academy.paybridge.compliance.api.ComplianceApi;
 import com.academy.paybridge.compliance.api.LimitStatus;
+import com.academy.paybridge.compliance.api.Party;
+import com.academy.paybridge.compliance.api.ScreeningResult;
+import com.academy.paybridge.compliance.api.UsdLimitScope;
 import com.academy.paybridge.customer.api.CustomerApi;
 import com.academy.paybridge.customer.api.CustomerSummary;
 import com.academy.paybridge.shared.exception.ErrorCode;
@@ -15,6 +21,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -27,15 +34,24 @@ public class ComplianceService implements ComplianceApi {
     private final ComplianceProperties properties;
     private final JdbcTemplate jdbcTemplate;
     private final Clock clock;
+    private final ScreeningService screening;
+    private final UsdLimitService usdLimits;
+    private final VelocityService velocity;
 
     public ComplianceService(CustomerApi customerApi,
                              ComplianceProperties properties,
                              JdbcTemplate jdbcTemplate,
-                             Clock clock) {
+                             Clock clock,
+                             ScreeningService screening,
+                             UsdLimitService usdLimits,
+                             VelocityService velocity) {
         this.customerApi = customerApi;
         this.properties = properties;
         this.jdbcTemplate = jdbcTemplate;
         this.clock = clock;
+        this.screening = screening;
+        this.usdLimits = usdLimits;
+        this.velocity = velocity;
     }
 
     @Override
@@ -94,6 +110,52 @@ public class ComplianceService implements ComplianceApi {
 
         return new LimitStatus(customerId, customer.kycTier(),
                 limit.perTransactionMinor(), limit.dailyMinor(), usedToday);
+    }
+
+    // ---- anti-money-laundering: each piece lives in its own class; this front desk only hands the work over
+
+    @Override
+    public ScreeningResult screen(Party party, String partyRole, String contextRef) {
+        return screening.screen(party, partyRole, contextRef);
+    }
+
+    @Override
+    public LocalDate reserveUsd(UsdLimitScope scope, String subjectKey, long usdMinor) {
+        LocalDate day = today();
+        usdLimits.reserve(scope, subjectKey, usdMinor, day);
+        return day;
+    }
+
+    @Override
+    public void releaseUsd(UsdLimitScope scope, String subjectKey, long usdMinor, LocalDate usageDate) {
+        usdLimits.release(scope, subjectKey, usdMinor, usageDate);
+    }
+
+    @Override
+    public Optional<String> assessVelocity(String subjectKey, String eventRef, long usdMinor) {
+        return velocity.assess(subjectKey, eventRef, usdMinor);
+    }
+
+    @Override
+    public CaseView openReviewCase(String contextRef, String partyRole, String partyName, String reason) {
+        return screening.openReviewCase(contextRef, partyRole, partyName, reason);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CaseView getCase(UUID caseId) {
+        return screening.getCase(caseId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CaseView> listCases(CaseStatus status, int limit) {
+        return screening.listCases(status, limit);
+    }
+
+    @Override
+    public CaseView decideCase(UUID caseId, CaseDecision decision, String reason, String decidedBy) {
+        return screening.decideCase(caseId, decision, reason, decidedBy);
     }
 
     private ComplianceProperties.Limit limitFor(CustomerSummary customer) {
