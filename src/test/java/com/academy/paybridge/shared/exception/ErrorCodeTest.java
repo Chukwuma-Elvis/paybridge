@@ -18,6 +18,8 @@ class ErrorCodeTest {
             "UNAUTHORIZED, UNAUTHORIZED",
             "FORBIDDEN, FORBIDDEN",
             "RATE_LIMITED, TOO_MANY_REQUESTS",
+            "RATE_UNAVAILABLE, SERVICE_UNAVAILABLE",
+            "PAYLOAD_TOO_LARGE, CONTENT_TOO_LARGE",
             "INTERNAL_ERROR, INTERNAL_SERVER_ERROR"
     })
     void mapsEachCodeToItsHttpStatus(ErrorCode code, HttpStatus expected) {

@@ -20,6 +20,15 @@ public interface AccountApi {
 
     UUID systemAccountId(SystemAccount account);
 
+    /** Finds one of the bank's own accounts by its code (for accounts that are created at run time, such as a partner's). */
+    UUID systemAccountIdByCode(String code);
+
+    /**
+     * Returns the bank's own account with this code, creating it (empty, active, in this currency) if it does not exist yet.
+     * Asking again returns the same account. If it exists in a different currency the request is refused.
+     */
+    UUID ensureSystemAccount(String code, String currencyCode);
+
     /**
      * Locks the accounts for the rest of the current transaction and returns their up-to-date state.
      * Rows are always locked in ascending id order, whatever order the caller lists them in, so two

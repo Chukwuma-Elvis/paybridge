@@ -3,6 +3,7 @@ package com.academy.paybridge.ledger.service;
 import com.academy.paybridge.account.api.AccountApi;
 import com.academy.paybridge.account.api.AccountSummary;
 import com.academy.paybridge.account.api.InsufficientFundsException;
+import com.academy.paybridge.ledger.api.AccountLineView;
 import com.academy.paybridge.ledger.api.EntryType;
 import com.academy.paybridge.ledger.api.LedgerApi;
 import com.academy.paybridge.ledger.api.LedgerLineView;
@@ -23,6 +24,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Currency;
 import java.util.HashMap;
@@ -81,6 +83,12 @@ public class LedgerService implements LedgerApi {
                 .map(row -> new LedgerLineView(row.entryId(), row.entryType(), row.reference(),
                         row.description(), row.amountMinor(), row.currency(), row.createdAt()))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AccountLineView> linesBefore(UUID accountId, Instant before, int limit) {
+        return ledgerLineRepository.linesBefore(accountId, before, PageRequest.of(0, Math.max(1, limit)));
     }
 
     @Override

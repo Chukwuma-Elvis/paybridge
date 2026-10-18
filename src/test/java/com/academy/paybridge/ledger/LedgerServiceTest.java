@@ -1,5 +1,6 @@
 package com.academy.paybridge.ledger;
 
+import com.academy.paybridge.LedgerInvariants;
 import com.academy.paybridge.AbstractIntegrationTest;
 import com.academy.paybridge.account.api.AccountApi;
 import com.academy.paybridge.account.api.InsufficientFundsException;
@@ -98,8 +99,7 @@ class LedgerServiceTest extends AbstractIntegrationTest {
         UUID b = newAccount();
         transfer(a, b, 5_000, ref());
 
-        Long total = jdbcTemplate.queryForObject("select coalesce(sum(balance_minor), 0) from account", Long.class);
-        assertThat(total).isZero();
+        LedgerInvariants.everyCurrencySumsToZero(jdbcTemplate);
     }
 
     // ---------- bad requests are refused and change nothing ----------

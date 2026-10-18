@@ -1,5 +1,6 @@
 package com.academy.paybridge.ledger;
 
+import com.academy.paybridge.LedgerInvariants;
 import com.academy.paybridge.AbstractIntegrationTest;
 import com.academy.paybridge.account.api.AccountApi;
 import com.academy.paybridge.account.api.InsufficientFundsException;
@@ -190,7 +191,6 @@ class ConcurrencyTest extends AbstractIntegrationTest {
 
     @Test
     void afterAllThatTheBankStillAddsUpToZero() {
-        Long total = jdbcTemplate.queryForObject("select coalesce(sum(balance_minor), 0) from account", Long.class);
-        assertThat(total).isZero();
+        LedgerInvariants.everyCurrencySumsToZero(jdbcTemplate);
     }
 }

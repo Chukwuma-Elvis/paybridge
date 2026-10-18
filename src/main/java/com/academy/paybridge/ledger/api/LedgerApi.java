@@ -1,5 +1,6 @@
 package com.academy.paybridge.ledger.api;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +35,12 @@ public interface LedgerApi {
 
     /** Newest first. */
     List<LedgerLineView> statement(UUID accountId, int limit);
+
+    /**
+     * Every line posted to the account before {@code before}, OLDEST first (at most {@code limit}), each with its line id and the
+     * entry it belongs to. Used by settlement to cut an account's movements into batches.
+     */
+    List<AccountLineView> linesBefore(UUID accountId, Instant before, int limit);
 
     /** The sum of every line ever posted to the account. Must always equal the account's cached balance. */
     long sumOfLines(UUID accountId);

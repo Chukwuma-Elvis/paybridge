@@ -17,6 +17,16 @@ public interface LedgerLineRepository extends JpaRepository<LedgerLine, UUID> {
     long sumByAccountId(@Param("accountId") UUID accountId);
 
     @Query("""
+            select new com.academy.paybridge.ledger.api.AccountLineView(
+                l.id, e.id, e.entryType, e.reference, l.amountMinor, l.currency, l.createdAt)
+            from LedgerLine l join JournalEntry e on e.id = l.entryId
+            where l.accountId = :accountId and l.createdAt < :before
+            order by l.createdAt asc, l.id asc
+            """)
+    List<com.academy.paybridge.ledger.api.AccountLineView> linesBefore(@Param("accountId") UUID accountId,
+                                                                       @Param("before") java.time.Instant before, Pageable pageable);
+
+    @Query("""
             select new com.academy.paybridge.ledger.repository.StatementRow(
                 e.id, e.entryType, e.reference, e.description, l.amountMinor, l.currency, l.createdAt)
             from LedgerLine l join JournalEntry e on e.id = l.entryId
