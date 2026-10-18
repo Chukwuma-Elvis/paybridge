@@ -1,5 +1,6 @@
 package com.academy.paybridge.transfer;
 
+import com.academy.paybridge.LedgerInvariants;
 import com.academy.paybridge.AbstractIntegrationTest;
 import com.academy.paybridge.account.api.AccountApi;
 import com.academy.paybridge.account.api.SystemAccount;
@@ -84,8 +85,7 @@ class ExternalTransferTest extends AbstractIntegrationTest {
 
     @AfterEach
     void theBankStillAddsUpToZero() {
-        Long total = jdbcTemplate.queryForObject("select coalesce(sum(balance_minor), 0) from account", Long.class);
-        assertThat(total).as("money must never be created or destroyed").isZero();
+        LedgerInvariants.everyCurrencySumsToZero(jdbcTemplate);
     }
 
     private long balance(UUID accountId) {

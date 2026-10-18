@@ -41,3 +41,23 @@ class ReconcilerSchedule {
         JobCorrelation.run("reconciler", reconciler::reconcile);
     }
 }
+
+/** The alarm clock for system payouts (remittance payouts). Switched off with the dispatcher, so tests drive them by hand. */
+@Component
+@ConditionalOnProperty(name = "paybridge.dispatcher.enabled", havingValue = "true", matchIfMissing = true)
+class SystemPayoutSchedule {
+
+    private final SystemPayoutDispatcher dispatcher;
+
+    SystemPayoutSchedule(SystemPayoutDispatcher dispatcher) {
+        this.dispatcher = dispatcher;
+    }
+
+    @Scheduled(fixedDelayString = "${paybridge.dispatcher.interval:2s}")
+    void run() {
+        JobCorrelation.run("payouts", () -> {
+            dispatcher.dispatchDue();
+            dispatcher.reconcile();
+        });
+    }
+}

@@ -16,7 +16,7 @@ class AdminKeyBootstrapTest extends AbstractIntegrationTest {
     private ApiKeyService apiKeyService;
 
     private static SecurityProperties withBootstrapKey(boolean enabled, String key) {
-        return new SecurityProperties(enabled, key, new SecurityProperties.RateLimit(120, 30, 10));
+        return new SecurityProperties(enabled, key, new SecurityProperties.RateLimit(120, 30, 10, 600));
     }
 
     private static String strongKey() {

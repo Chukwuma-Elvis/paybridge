@@ -38,8 +38,9 @@ class SecurityFilterConfig {
                                                                         MeterRegistry meters) {
         RateLimiter apiLimiter = new RateLimiter(properties.rateLimit().requestsPerMinute(), clock);
         RateLimiter transferLimiter = new RateLimiter(properties.rateLimit().transfersPerMinute(), clock);
+        RateLimiter webhookLimiter = new RateLimiter(properties.rateLimit().webhooksPerMinute(), clock);
         FilterRegistrationBean<RateLimitFilter> registration =
-                new FilterRegistrationBean<>(new RateLimitFilter(apiLimiter, transferLimiter, meters));
+                new FilterRegistrationBean<>(new RateLimitFilter(apiLimiter, transferLimiter, webhookLimiter, meters));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 3);
         return registration;
     }

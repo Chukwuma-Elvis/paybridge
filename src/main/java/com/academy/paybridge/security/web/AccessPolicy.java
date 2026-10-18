@@ -21,6 +21,11 @@ final class AccessPolicy {
     enum Requirement {
         /** Anyone may call it. */
         PUBLIC,
+        /**
+         * Open to the internet because a payment provider cannot send our API key. The request proves itself with the provider's
+         * signature instead (checked by the webhook code), and the rate limiter caps how fast one address may call.
+         */
+        SIGNED_WEBHOOK,
         /** Any valid API key (client or admin). */
         ANY_KEY,
         /** An admin key only. */
@@ -44,6 +49,9 @@ final class AccessPolicy {
         }
         if (isUnder(path, "/actuator") || isUnder(path, "/api/admin") || isUnder(path, "/api/dev")) {
             return Requirement.ADMIN;
+        }
+        if (isUnder(path, "/api/webhooks")) {
+            return Requirement.SIGNED_WEBHOOK;
         }
         return Requirement.ANY_KEY;
     }

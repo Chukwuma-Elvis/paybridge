@@ -60,7 +60,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
         }
 
         Requirement requirement = AccessPolicy.requirementFor(request.getRequestURI());
-        if (requirement == Requirement.PUBLIC) {
+        if (requirement == Requirement.PUBLIC || requirement == Requirement.SIGNED_WEBHOOK) {
+            // webhooks carry a provider signature instead of an API key; the webhook code checks it
             filterChain.doFilter(request, response);
             return;
         }

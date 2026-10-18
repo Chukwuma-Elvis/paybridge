@@ -23,11 +23,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimiter apiLimiter;
     private final RateLimiter transferLimiter;
+    private final RateLimiter webhookLimiter;
     private final MeterRegistry meters;
 
-    public RateLimitFilter(RateLimiter apiLimiter, RateLimiter transferLimiter, MeterRegistry meters) {
+    public RateLimitFilter(RateLimiter apiLimiter, RateLimiter transferLimiter, RateLimiter webhookLimiter,
+                           MeterRegistry meters) {
         this.apiLimiter = apiLimiter;
         this.transferLimiter = transferLimiter;
+        this.webhookLimiter = webhookLimiter;
         this.meters = meters;
     }
 
@@ -35,6 +38,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+        if (AccessPolicy.requirementFor(request.getRequestURI()) == AccessPolicy.Requirement.SIGNED_WEBHOOK) {
+            // no API key here, so the caller is identified by address
+            RateLimiter.Decision decision = webhookLimiter.tryAcquire(request.getRemoteAddr());
+            if (!decision.allowed()) {
+                meters.counter("paybridge.ratelimit.rejections", "limiter", "webhooks").increment();
+                response.setHeader("Retry-After", String.valueOf(decision.retryAfterSeconds()));
+                ProblemJson.write(request, response, ErrorCode.RATE_LIMITED,
+                        "Too many requests. Try again in " + decision.retryAfterSeconds() + " second(s).");
+                return;
+            }
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         Object caller = request.getAttribute(ApiKeyAuthFilter.CLIENT_ATTRIBUTE);
         if (!(caller instanceof AuthenticatedClient client)) {
             filterChain.doFilter(request, response);
@@ -66,6 +83,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return false;
         }
         String path = AccessPolicy.normalise(request.getRequestURI());
-        return path != null && (path.equals("/api/transfers") || path.startsWith("/api/transfers/"));
+        return path != null && (path.equals("/api/transfers") || path.startsWith("/api/transfers/")
+                || path.equals("/api/remittances") || path.equals("/api/fx/quotes"));
     }
 }

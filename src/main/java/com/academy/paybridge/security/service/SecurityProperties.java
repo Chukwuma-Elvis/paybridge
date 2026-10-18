@@ -21,10 +21,12 @@ public record SecurityProperties(
      * @param requestsPerMinute  per API key, across every endpoint
      * @param transfersPerMinute per API key, for submitting transfers only (a tighter limit on the endpoints that move money)
      * @param failedAuthPerMinute per client address, for requests that present a key which does not exist
+     * @param webhooksPerMinute   per client address, for payment-provider webhooks (which carry no API key)
      */
     public record RateLimit(
             @DefaultValue("120") int requestsPerMinute,
             @DefaultValue("30") int transfersPerMinute,
-            @DefaultValue("10") int failedAuthPerMinute) {
+            @DefaultValue("10") int failedAuthPerMinute,
+            @DefaultValue("600") int webhooksPerMinute) {
     }
 }

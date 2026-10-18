@@ -37,7 +37,7 @@ public abstract class AbstractSecurityTest extends AbstractIntegrationTest {
     protected Clock clock;
 
     protected static SecurityProperties properties(boolean enabled) {
-        return new SecurityProperties(enabled, "", new SecurityProperties.RateLimit(120, 30, 10));
+        return new SecurityProperties(enabled, "", new SecurityProperties.RateLimit(120, 30, 10, 600));
     }
 
     /** Filters as in the running app, with generous limits that a normal test will never reach. */
@@ -46,12 +46,17 @@ public abstract class AbstractSecurityTest extends AbstractIntegrationTest {
     }
 
     protected MockMvc secured(SecurityProperties properties, RateLimiter failedAuth, RateLimiter api, RateLimiter transfers) {
+        return secured(properties, failedAuth, api, transfers, new RateLimiter(1_000, clock));
+    }
+
+    protected MockMvc secured(SecurityProperties properties, RateLimiter failedAuth, RateLimiter api, RateLimiter transfers,
+                              RateLimiter webhooks) {
         return MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilters(
                         new RequestIdFilter(),
                         new AccessLogFilter(),
                         new ApiKeyAuthFilter(apiKeyService, properties, failedAuth, meters),
-                        new RateLimitFilter(api, transfers, meters))
+                        new RateLimitFilter(api, transfers, webhooks, meters))
                 .build();
     }
 

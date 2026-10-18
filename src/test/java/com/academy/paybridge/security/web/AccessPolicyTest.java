@@ -27,7 +27,11 @@ class AccessPolicyTest {
             "/api/dev/accounts/1/fund,   ADMIN",
             "/actuator/metrics,          ADMIN",
             "/actuator/env,              ADMIN",
-            "/actuator,                  ADMIN"
+            "/actuator,                  ADMIN",
+            "/api/webhooks/paystack,     SIGNED_WEBHOOK",
+            "/api/webhooks/monnify,      SIGNED_WEBHOOK",
+            "/api/webhooks,              SIGNED_WEBHOOK",
+            "/api/webhooksx/paystack,    ANY_KEY"
     })
     void eachAddressNeedsTheRightKind(String path, Requirement expected) {
         assertThat(AccessPolicy.requirementFor(path)).isEqualTo(expected);
@@ -49,7 +53,12 @@ class AccessPolicyTest {
             "/actuator/%6Detrics                | ADMIN",
             "/api\\dev\\accounts                | ADMIN",
             "/actuator//health                  | PUBLIC",
-            "/ACTUATOR/HEALTH                   | PUBLIC"
+            "/ACTUATOR/HEALTH                   | PUBLIC",
+            "/API//Webhooks/Paystack            | SIGNED_WEBHOOK",
+            "/api/%77ebhooks/paystack           | SIGNED_WEBHOOK",
+            "/api/webhooks/../admin/api-keys    | ADMIN",
+            "/api/webhooks/../dev/accounts/1    | ADMIN",
+            "/api/customers/../webhooks/x       | SIGNED_WEBHOOK"
     })
     void disguisedAddressesAreJudgedByWhereTheyReallyGo(String path, Requirement expected) {
         assertThat(AccessPolicy.requirementFor(path)).isEqualTo(expected);
