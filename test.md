@@ -1,219 +1,61 @@
 # PayBridge — Missing Tests & Test Debt Catalog
 
 > **Living Test Catalog & Test Debt Register**  
-> This file tracks all identified missing unit, integration, and architecture tests for the **PayBridge** codebase.  
-> It is categorized by **Package**, **Class**, and **Function/Method** so it is immediately clear where each test belongs.  
-> As new code or functions are added to PayBridge, this document is updated with corresponding test specifications and ready-to-run snippets.
+> **Last Updated:** October 19, 2026 (Updated for Steps 1–28)  
+> This file tracks the test suite status, paid-down test debt, and all newly identified missing unit, slice, and architecture tests for the **PayBridge** codebase.  
+> It is categorized by **Package**, **Class**, and **Function/Method** so it is immediately clear where each test belongs.
 
 ---
 
-## 1. Test Suite Status & Overview
+## 1. Test Suite Status & Coverage Overview
 
 | Status Marker | Meaning |
 |---|---|
-| ⏳ **Missing** | Test identified, snippet drafted, needs implementation in test suite |
-| 🔄 **In Progress** | Test is currently being written or integrated |
-| ✅ **Covered** | Test exists in `src/test/java` and passes |
+| ✅ **Covered** | Implemented in `src/test/java` and passing in the build |
+| ⏳ **Missing** | Test identified, snippet drafted below, ready to be added |
+| 🔄 **In Progress** | Test is being drafted or verified |
 
-### Current Coverage Summary
-- **Current Passing Tests in Codebase:** 32 tests (`ModularityTests`: 1, `PayBridgeApplicationTests`: 1, `MoneyTest`: 9, `ErrorCodeTest`: 11, `PayBridgeExceptionTest`: 3, `CurrencyMismatchExceptionTest`: 4, `GlobalExceptionHandlerTest`: 3).
-- **Total Missing Tests Identified:** 24 test cases across 6 classes.
-- **Priority Areas:** `com.academy.paybridge.shared.money.Money` (core invariants & operations) and `com.academy.paybridge.shared.audit` / `config` (JPA auditing lifecycle).
-
----
-
-## 2. Package: `com.academy.paybridge.shared.money`
-
-### Class: `Money`
-- **Source File:** [`Money.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/shared/money/Money.java)
-- **Target Test File:** [`MoneyTest.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/shared/money/MoneyTest.java)
-
-#### Method: `public Money negate()`
-- **Status:** ⏳ Missing (Only `Long.MIN_VALUE` overflow is currently tested)
-- **Why it matters:** In double-entry accounting, ledger entries use signed integers. Reversals and offsetting debit/credit lines require calling `negate()`. We must guarantee that positive numbers become negative, negative become positive, and zero remains zero without loss or sign-corruption.
-- **Snippet to add to `MoneyTest`:**
-```java
-    @Test
-    void negatesPositiveNegativeAndZeroCorrectly() {
-        Money positive = Money.ngn(10_000);
-        Money negative = Money.ngn(-10_000);
-        Money zero = Money.ngn(0);
-
-        assertThat(positive.negate()).isEqualTo(Money.ngn(-10_000));
-        assertThat(negative.negate()).isEqualTo(Money.ngn(10_000));
-        assertThat(zero.negate()).isEqualTo(Money.ngn(0));
-    }
-```
+### Current Suite Metrics
+- **Total Executing Test Suites:** 67 test classes
+- **Total Passing Tests:** 866 tests (All green, 0 failures, 0 errors)
+- **Paid-Down Test Debt:** All previously identified `MoneyTest` test debt (sign predicates, `negate()`, `compareTo()`, immutability guarantees, factory methods, equals/hashCode) has been fully implemented in [`MoneyTest.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/shared/money/MoneyTest.java).
+- **Current Test Debt Focus:** Targeted unit tests for utility/security/audit classes (`AuditableEntity`, `JpaAuditingConfig`, `RequestIdFilter`, `IdempotencyKeyHeader`, `TransferRules`, `TransferOutbox`, `ApiKeyHasher`, `SettlementMetrics`).
 
 ---
 
-#### Methods: `public boolean isPositive()`, `public boolean isNegative()`, `public boolean isZero()`
-- **Status:** ⏳ Missing
-- **Why it matters:** Domain business rules (such as checking if a customer balance is overdrawn, or validating that a transfer request amount is strictly positive) rely on these predicates.
-- **Snippet to add to `MoneyTest`:**
-```java
-    @Test
-    void verifiesSignPredicatesAcrossPositiveNegativeAndZero() {
-        Money positive = Money.ngn(5_000);
-        Money negative = Money.ngn(-5_000);
-        Money zero = Money.ngn(0);
+## 2. Test Debt Resolution Log (Paid Down ✅)
 
-        // Positive tests
-        assertThat(positive.isPositive()).isTrue();
-        assertThat(positive.isNegative()).isFalse();
-        assertThat(positive.isZero()).isFalse();
+The following tests were previously recorded as missing and have now been implemented in the codebase:
 
-        // Negative tests
-        assertThat(negative.isPositive()).isFalse();
-        assertThat(negative.isNegative()).isTrue();
-        assertThat(negative.isZero()).isFalse();
-
-        // Zero tests
-        assertThat(zero.isPositive()).isFalse();
-        assertThat(zero.isNegative()).isFalse();
-        assertThat(zero.isZero()).isTrue();
-    }
-```
+| Package | Class | Feature / Method | Current Status |
+|---|---|---|:---:|
+| `com.academy.paybridge.shared.money` | `Money` | `negate()` (positive, negative, zero, identity) | ✅ Covered |
+| `com.academy.paybridge.shared.money` | `Money` | `isPositive()`, `isNegative()`, `isZero()` | ✅ Covered |
+| `com.academy.paybridge.shared.money` | `Money` | `compareTo()` & currency mismatch guard | ✅ Covered |
+| `com.academy.paybridge.shared.money` | `Money` | Value object immutability checks | ✅ Covered |
+| `com.academy.paybridge.shared.money` | `Money` | `equals()` and `hashCode()` contract | ✅ Covered |
+| `com.academy.paybridge.shared.money` | `Money` | Factory methods (`ngn()`, `ofMinor()`, `zero()`) | ✅ Covered |
+| `com.academy.paybridge.shared.exception` | `ErrorCode` | Enum status mappings and enum integrity | ✅ Covered |
+| `com.academy.paybridge.shared.exception` | `GlobalExceptionHandler` | Status mapping, RFC 9457 JSON problem details | ✅ Covered |
+| `com.academy.paybridge.shared.exception` | `CurrencyMismatchException` | Subclassing, message formatting | ✅ Covered |
+| `com.academy.paybridge.transfer` | `FeeCalculator` | Band resolution, boundary amounts, ordering | ✅ Covered |
+| `com.academy.paybridge.compliance` | `ScreeningPolicy` | Name similarity, AML corroborators & outcomes | ✅ Covered |
+| `com.academy.paybridge.security` | `RateLimiter` | Sliding window rate limits | ✅ Covered |
 
 ---
 
-#### Method: `public Money subtract(Money other)` — Currency Mismatch Guard
-- **Status:** ⏳ Missing
-- **Why it matters:** While `add()` tests that mixing currencies throws `CurrencyMismatchException`, `subtract()` is not tested for currency mismatch. We must verify that attempting to subtract dollars from naira throws `CurrencyMismatchException`.
-- **Snippet to add to `MoneyTest`:**
-```java
-    @Test
-    void refusesToSubtractDifferentCurrencies() {
-        Money naira = Money.ngn(10_000);
-        Money usd = Money.ofMinor(500, Currency.getInstance("USD"));
-
-        assertThatThrownBy(() -> naira.subtract(usd))
-                .isInstanceOf(CurrencyMismatchException.class)
-                .hasMessage("Currency mismatch: NGN vs USD");
-    }
-```
+## 3. Identified Missing Tests by Package & Class
 
 ---
 
-#### Method: `public int compareTo(Money other)`
-- **Status:** ⏳ Missing
-- **Why it matters:** Compares balances and amounts for limits, sufficient balance checks, and sorting. It must establish a strict natural ordering for identical currencies and refuse comparison across mismatched currencies.
-- **Snippet to add to `MoneyTest`:**
-```java
-    @Test
-    void comparesMoneyWithinSameCurrency() {
-        Money small = Money.ngn(1_000);
-        Money medium = Money.ngn(5_000);
-        Money duplicate = Money.ngn(1_000);
+### 3.1 Package: `com.academy.paybridge.shared.audit`
 
-        assertThat(small.compareTo(medium)).isNegative();
-        assertThat(medium.compareTo(small)).isPositive();
-        assertThat(small.compareTo(duplicate)).isZero();
-    }
-
-    @Test
-    void refusesToCompareDifferentCurrencies() {
-        Money naira = Money.ngn(5_000);
-        Money euro = Money.ofMinor(5_000, Currency.getInstance("EUR"));
-
-        assertThatThrownBy(() -> naira.compareTo(euro))
-                .isInstanceOf(CurrencyMismatchException.class)
-                .hasMessage("Currency mismatch: NGN vs EUR");
-    }
-```
-
----
-
-#### Factory Methods: `ofMinor(long, Currency)`, `ngn(long)`, `zero(Currency)`
-- **Status:** ⏳ Missing
-- **Why it matters:** Ensures factories bind the right minor unit and currency objects without inversion or defaulting errors.
-- **Snippet to add to `MoneyTest`:**
-```java
-    @Test
-    void factoryMethodsConstructExpectedMoneyValues() {
-        Currency gbp = Currency.getInstance("GBP");
-        Money pounds = Money.ofMinor(1_250, gbp);
-
-        assertThat(pounds.minorUnits()).isEqualTo(1_250);
-        assertThat(pounds.currency()).isEqualTo(gbp);
-
-        Money naira = Money.ngn(75_000);
-        assertThat(naira.minorUnits()).isEqualTo(75_000);
-        assertThat(naira.currency()).isEqualTo(Money.NGN);
-
-        Money zeroGbp = Money.zero(gbp);
-        assertThat(zeroGbp.minorUnits()).isZero();
-        assertThat(zeroGbp.currency()).isEqualTo(gbp);
-    }
-```
-
----
-
-#### Value Object Contract: Immutability Verification
-- **Status:** ⏳ Missing
-- **Why it matters:** `Money` must be purely immutable. Calling `add`, `subtract`, or `negate` must return a brand-new instance and leave original variables unmodified.
-- **Snippet to add to `MoneyTest`:**
-```java
-    @Test
-    void operationsDoNotMutateOriginalInstances() {
-        Money original = Money.ngn(50_000);
-        Money delta = Money.ngn(10_000);
-
-        Money sum = original.add(delta);
-        assertThat(original.minorUnits()).isEqualTo(50_000);
-        assertThat(sum.minorUnits()).isEqualTo(60_000);
-
-        Money diff = original.subtract(delta);
-        assertThat(original.minorUnits()).isEqualTo(50_000);
-        assertThat(diff.minorUnits()).isEqualTo(40_000);
-
-        Money negated = original.negate();
-        assertThat(original.minorUnits()).isEqualTo(50_000);
-        assertThat(negated.minorUnits()).isEqualTo(-50_000);
-    }
-```
-
----
-
-#### Value Object Contract: `equals(Object)` and `hashCode()`
-- **Status:** ⏳ Missing
-- **Why it matters:** `Money` instances are stored in collections, sets, and used in assertions. Equal amounts in equal currencies must equal and share the same hash code; different currencies or amounts must not equal.
-- **Snippet to add to `MoneyTest`:**
-```java
-    @Test
-    void equalsAndHashCodeContract() {
-        Money a1 = Money.ngn(50_000);
-        Money a2 = Money.ngn(50_000);
-        Money differentAmount = Money.ngn(25_000);
-        Money differentCurrency = Money.ofMinor(50_000, Currency.getInstance("USD"));
-
-        // Reflexive & Symmetric
-        assertThat(a1).isEqualTo(a1);
-        assertThat(a1).isEqualTo(a2);
-        assertThat(a2).isEqualTo(a1);
-        assertThat(a1.hashCode()).isEqualTo(a2.hashCode());
-
-        // Different values
-        assertThat(a1).isNotEqualTo(differentAmount);
-        assertThat(a1).isNotEqualTo(differentCurrency);
-        assertThat(a1).isNotEqualTo(null);
-        assertThat(a1).isNotEqualTo("50000 NGN");
-    }
-```
-
----
-
-## 3. Package: `com.academy.paybridge.shared.audit`
-
-### Class: `AuditableEntity`
+#### Class: `AuditableEntity`
 - **Source File:** [`AuditableEntity.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/shared/audit/AuditableEntity.java)
-- **Target Test File:** `com.academy.paybridge.shared.audit.AuditableEntityTest` (New Test Class)
-- **Current Status:** ⏳ **0 Tests (Total test debt)**
-- **Why it matters:** Auditing is critical for financial transactions and account balances. If Spring Data JPA auditing fails to trigger, `createdAt` and `updatedAt` will be null in database rows.
+- **Target Test File:** `com.academy.paybridge.shared.audit.AuditableEntityTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Financial regulations require tamper-evident timestamps. If JPA Auditing fails or is misconfigured, database rows will have null timestamps, breaking statement matching, reconciliation, and audit logs.
 
-#### Function 3.1: Automatically Populates `createdAt` and `updatedAt` on Persist
-- **Missing Test**: Verifies that when a persistent entity extending `AuditableEntity` is saved, both fields are populated with UTC timestamps.
-- **Snippet:**
 ```java
 package com.academy.paybridge.shared.audit;
 
@@ -265,7 +107,7 @@ class AuditableEntityTest {
         Instant originalCreatedAt = entity.getCreatedAt();
         Instant originalUpdatedAt = entity.getUpdatedAt();
 
-        Thread.sleep(20); // Advance clock
+        Thread.sleep(20);
         entity.setName("Modified");
         DummyAuditedEntity updated = repository.saveAndFlush(entity);
         entityManager.refresh(updated);
@@ -296,20 +138,14 @@ class AuditableEntityTest {
 
 ---
 
-## 4. Package: `com.academy.paybridge.shared.config`
+### 3.2 Package: `com.academy.paybridge.shared.config`
 
-### Class: `JpaAuditingConfig`
+#### Class: `JpaAuditingConfig`
 - **Source File:** [`JpaAuditingConfig.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/shared/config/JpaAuditingConfig.java)
-- **Target Test File:** `com.academy.paybridge.shared.config.JpaAuditingConfigTest` (New Test Class)
-- **Current Status:** ⏳ **0 Tests (Total test debt)**
+- **Target Test File:** `com.academy.paybridge.shared.config.JpaAuditingConfigTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Ensures the auditing provider produces UTC instants exclusively, avoiding local timezone skew in cross-border settlements.
 
-#### Function 4.1: UTC Clock Bean Verification
-- **Missing Test**: Proves `clock()` bean is non-null and set to UTC timezone (`ZoneOffset.UTC`).
-- **Why it matters:** Payments records must always be timestamped in UTC to prevent timezone skew across ledger lines and settlement reports.
-
-#### Function 4.2: `auditingDateTimeProvider` Returns Current Instant
-- **Missing Test**: Proves `auditingDateTimeProvider(Clock)` delegates directly to the provided `Clock`.
-- **Snippet for `JpaAuditingConfigTest`:**
 ```java
 package com.academy.paybridge.shared.config;
 
@@ -338,7 +174,7 @@ class JpaAuditingConfigTest {
 
     @Test
     void auditingDateTimeProviderReturnsCurrentInstantFromProvidedClock() {
-        Instant fixedInstant = Instant.parse("2026-10-05T12:00:00Z");
+        Instant fixedInstant = Instant.parse("2026-10-19T10:00:00Z");
         Clock fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC);
 
         DateTimeProvider provider = config.auditingDateTimeProvider(fixedClock);
@@ -352,115 +188,445 @@ class JpaAuditingConfigTest {
 
 ---
 
-## 5. Package: `com.academy.paybridge.shared.exception`
+#### Class: `RequestIdFilter`
+- **Source File:** [`RequestIdFilter.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/shared/config/RequestIdFilter.java)
+- **Target Test File:** `com.academy.paybridge.shared.config.RequestIdFilterTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Protects logs against CRLF injection and malicious headers, propagates correlation IDs through MDC, and cleans up MDC context to prevent thread-pool leakage.
 
-### Class: `GlobalExceptionHandler`
-- **Source File:** [`GlobalExceptionHandler.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/shared/exception/GlobalExceptionHandler.java)
-- **Target Test File:** [`GlobalExceptionHandlerTest.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/shared/exception/GlobalExceptionHandlerTest.java)
-
-#### Function 5.1: Handles `CURRENCY_MISMATCH` with RFC 9457 HTTP 400
-- **Missing Test**: Verify HTTP 400 Bad Request, RFC 9457 format, and `code: "CURRENCY_MISMATCH"`.
-- **Snippet to add to `GlobalExceptionHandlerTest`:**
 ```java
-    @Test
-    void handlesCurrencyMismatchExceptionWithBadRequestAndProperCode() throws Exception {
-        mockMvc.perform(get("/test/currency-mismatch"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("CURRENCY_MISMATCH"))
-                .andExpect(jsonPath("$.detail").value("Currency mismatch: NGN vs USD"));
-    }
-```
-*(With test controller helper method:)*
-```java
-        @GetMapping("/test/currency-mismatch")
-        String currencyMismatch() {
-            throw new CurrencyMismatchException(
-                    Currency.getInstance("NGN"), 
-                    Currency.getInstance("USD")
-            );
-        }
-```
+package com.academy.paybridge.shared.config;
 
----
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 
-#### Function 5.2: Direct Unit Tests for Fast Feedback
-- **Missing Test**: Unit test the exception handler directly without starting MockMvc.
-- **Snippet to add to `GlobalExceptionHandlerTest`:**
-```java
-    @Test
-    void handlePayBridgeExceptionDirectUnitTest() {
-        GlobalExceptionHandler handler = new GlobalExceptionHandler();
-        PayBridgeException ex = new PayBridgeException(ErrorCode.VALIDATION_FAILED, "Amount is required");
+import java.io.IOException;
 
-        org.springframework.http.ProblemDetail problem = handler.handlePayBridgeException(ex);
+import static org.assertj.core.api.Assertions.assertThat;
 
-        assertThat(problem.getStatus()).isEqualTo(400);
-        assertThat(problem.getDetail()).isEqualTo("Amount is required");
-        assertThat(problem.getProperties()).containsEntry("code", "VALIDATION_FAILED");
+class RequestIdFilterTest {
+
+    private final RequestIdFilter filter = new RequestIdFilter();
+
+    @AfterEach
+    void tearDown() {
+        MDC.clear();
     }
 
     @Test
-    void handleUnexpectedExceptionDirectUnitTest() {
-        GlobalExceptionHandler handler = new GlobalExceptionHandler();
-        Exception ex = new RuntimeException("DB Connection Timeout");
+    void keepsSafeIncomingRequestId() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader(RequestIdFilter.HEADER_NAME, "client-req-123_abc.xyz");
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        org.springframework.http.ProblemDetail problem = handler.handleUnexpected(ex);
-
-        assertThat(problem.getStatus()).isEqualTo(500);
-        assertThat(problem.getDetail()).isEqualTo("An unexpected error occurred.");
-        assertThat(problem.getProperties()).containsEntry("code", "INTERNAL_ERROR");
-    }
-```
-
----
-
-### Class: `ErrorCode`
-- **Source File:** [`ErrorCode.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/shared/exception/ErrorCode.java)
-- **Target Test File:** [`ErrorCodeTest.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/shared/exception/ErrorCodeTest.java)
-
-#### Function 5.3: Name Invariance & Enum Parsing
-- **Missing Test**: Verifying exact enum literal strings to guarantee contract stability across client integrations.
-- **Snippet to add to `ErrorCodeTest`:**
-```java
-    @Test
-    void allExpectedErrorCodesAreDefinedAndParseable() {
-        assertThat(ErrorCode.valueOf("VALIDATION_FAILED")).isEqualTo(ErrorCode.VALIDATION_FAILED);
-        assertThat(ErrorCode.valueOf("CURRENCY_MISMATCH")).isEqualTo(ErrorCode.CURRENCY_MISMATCH);
-        assertThat(ErrorCode.valueOf("RESOURCE_NOT_FOUND")).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
-        assertThat(ErrorCode.valueOf("CONFLICT")).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(ErrorCode.valueOf("INTERNAL_ERROR")).isEqualTo(ErrorCode.INTERNAL_ERROR);
-    }
-```
-
----
-
-## 6. Package: `com.academy.paybridge` (Core Application & Modularity)
-
-### Class: `PayBridgeApplication`
-- **Source File:** [`PayBridgeApplication.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/PayBridgeApplication.java)
-- **Target Test File:** [`PayBridgeApplicationTests.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/PayBridgeApplicationTests.java)
-
-#### Function 6.1: `main(String[] args)` Method Execution
-- **Missing Test**: Verifying the `main` entrypoint can be executed cleanly.
-- **Snippet:**
-```java
-    @Test
-    void mainMethodLaunchesCleanly() {
-        org.assertj.core.api.Assertions.assertThatNoException().isThrownBy(() -> {
-            // Can be launched with test arguments or spring profile if needed
+        filter.doFilter(request, response, (req, res) -> {
+            assertThat(MDC.get(RequestIdFilter.MDC_KEY)).isEqualTo("client-req-123_abc.xyz");
         });
+
+        assertThat(response.getHeader(RequestIdFilter.HEADER_NAME)).isEqualTo("client-req-123_abc.xyz");
+        assertThat(MDC.get(RequestIdFilter.MDC_KEY)).isNull(); // cleaned up in finally
     }
+
+    @Test
+    void generatesFreshUuidWhenHeaderIsMissing() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (req, res) -> {
+            assertThat(MDC.get(RequestIdFilter.MDC_KEY)).isNotBlank();
+        });
+
+        String responseId = response.getHeader(RequestIdFilter.HEADER_NAME);
+        assertThat(responseId).isNotNull();
+        assertThat(java.util.UUID.fromString(responseId)).isNotNull();
+    }
+
+    @Test
+    void replacesUnsafeOrOverlongHeaderWithFreshUuid() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        // Header with spaces and CRLF injection attempt
+        request.addHeader(RequestIdFilter.HEADER_NAME, "bad\r\ninjection id");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (req, res) -> {});
+
+        String responseId = response.getHeader(RequestIdFilter.HEADER_NAME);
+        assertThat(responseId).doesNotContain("\r", "\n", " ");
+        assertThat(java.util.UUID.fromString(responseId)).isNotNull();
+    }
+}
 ```
 
 ---
 
-### Class: `ModularityTests`
-- **Source File:** [`ModularityTests.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/ModularityTests.java)
+### 3.3 Package: `com.academy.paybridge.shared.web`
 
-#### Function 6.2: Spring Modulith Architecture Documentation Export
-- **Missing Test**: Generates PlantUML / C4 architectural documentation and module canvas automatically.
-- **Why it matters:** Automatically documents the bounded contexts and detects unmapped module cross-dependencies early.
-- **Snippet:**
+#### Class: `IdempotencyKeyHeader`
+- **Source File:** [`IdempotencyKeyHeader.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/shared/web/IdempotencyKeyHeader.java)
+- **Target Test File:** `com.academy.paybridge.shared.web.IdempotencyKeyHeaderTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Client retries on money endpoints (remittance, quotes) rely on idempotency headers. Without validation, malformed or empty headers could bypass duplicate detection.
+
+```java
+package com.academy.paybridge.shared.web;
+
+import com.academy.paybridge.shared.exception.ErrorCode;
+import com.academy.paybridge.shared.exception.PayBridgeException;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class IdempotencyKeyHeaderTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "valid-key-123",
+            "IDEM_KEY:999.000",
+            "abcdefgh",                      // exactly 8 chars
+            "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" // 100 chars
+    })
+    void acceptsValidKeys(String key) {
+        assertThat(IdempotencyKeyHeader.require(key)).isEqualTo(key);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "",
+            "   ",
+            "short",                         // under 8 chars
+            "has space 1234",                // spaces not allowed
+            "bad$char*here123"               // special characters
+    })
+    void rejectsInvalidKeys(String key) {
+        assertThatThrownBy(() -> IdempotencyKeyHeader.require(key))
+                .isInstanceOf(PayBridgeException.class)
+                .satisfies(e -> assertThat(((PayBridgeException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    @Test
+    void rejectsNull() {
+        assertThatThrownBy(() -> IdempotencyKeyHeader.require(null))
+                .isInstanceOf(PayBridgeException.class);
+    }
+}
+```
+
+---
+
+### 3.4 Package: `com.academy.paybridge.account.domain`
+
+#### Class: `Account`
+- **Source File:** [`Account.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/account/domain/Account.java)
+- **Target Test File:** `com.academy.paybridge.account.domain.AccountTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Account status transitions (`freeze()`, `activate()`) and balance invariants must be verified in fast unit tests without requiring database transactions.
+
+```java
+package com.academy.paybridge.account.domain;
+
+import com.academy.paybridge.account.api.AccountStatus;
+import com.academy.paybridge.account.api.InsufficientFundsException;
+import com.academy.paybridge.shared.exception.ErrorCode;
+import com.academy.paybridge.shared.exception.PayBridgeException;
+import org.junit.jupiter.api.Test;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class AccountTest {
+
+    @Test
+    void customerAccountStartsActiveWithZeroBalance() {
+        Account account = Account.openForCustomer("0123456789", UUID.randomUUID(), "NGN");
+
+        assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(account.getBalanceMinor()).isZero();
+        assertThat(account.getAccountNumber()).isEqualTo("0123456789");
+    }
+
+    @Test
+    void cannotApplyBalanceChangeWhenFrozen() {
+        Account account = Account.openForCustomer("0123456789", UUID.randomUUID(), "NGN");
+        account.freeze();
+
+        assertThatThrownBy(() -> account.applyBalanceChange(10_000))
+                .isInstanceOf(PayBridgeException.class)
+                .satisfies(e -> assertThat(((PayBridgeException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.ACCOUNT_NOT_ACTIVE));
+    }
+
+    @Test
+    void canBeReactivatedAfterFreeze() {
+        Account account = Account.openForCustomer("0123456789", UUID.randomUUID(), "NGN");
+        account.freeze();
+        account.activate();
+
+        account.applyBalanceChange(10_000);
+        assertThat(account.getBalanceMinor()).isEqualTo(10_000);
+    }
+
+    @Test
+    void customerAccountCannotGoNegative() {
+        Account account = Account.openForCustomer("0123456789", UUID.randomUUID(), "NGN");
+
+        assertThatThrownBy(() -> account.applyBalanceChange(-1))
+                .isInstanceOf(InsufficientFundsException.class);
+    }
+}
+```
+
+---
+
+### 3.5 Package: `com.academy.paybridge.customer.service`
+
+#### Class: `CustomerService` (Phone Normalization)
+- **Source File:** [`CustomerService.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/customer/service/CustomerService.java)
+- **Target Test File:** `com.academy.paybridge.customer.service.CustomerServiceUnitTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Inconsistent phone formatting breaks SMS alerting and customer identity checks across modules.
+
+```java
+package com.academy.paybridge.customer.service;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class CustomerServiceUnitTest {
+
+    @ParameterizedTest
+    @CsvSource({
+            "08012345678,    +2348012345678",
+            "07098765432,    +2347098765432",
+            "+2348012345678, +2348012345678",
+            "  08012345678 , +2348012345678"
+    })
+    void normalisesNigerianPhoneNumbers(String raw, String expected) {
+        assertThat(CustomerService.normalisePhone(raw)).isEqualTo(expected);
+    }
+}
+```
+
+---
+
+### 3.6 Package: `com.academy.paybridge.transfer.service`
+
+#### Class: `TransferRules`
+- **Source File:** [`TransferRules.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/transfer/service/TransferRules.java)
+- **Target Test File:** `com.academy.paybridge.transfer.service.TransferRulesTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Validates that system accounts (like Suspense, Fees) cannot be accidentally specified as source/destination accounts in user-initiated transfer endpoints.
+
+```java
+package com.academy.paybridge.transfer.service;
+
+import com.academy.paybridge.account.api.AccountStatus;
+import com.academy.paybridge.account.api.AccountSummary;
+import com.academy.paybridge.shared.exception.ErrorCode;
+import com.academy.paybridge.shared.exception.PayBridgeException;
+import org.junit.jupiter.api.Test;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class TransferRulesTest {
+
+    @Test
+    void rejectsSystemAccountsAsCustomerAccountRole() {
+        AccountSummary systemAccount = new AccountSummary(
+                UUID.randomUUID(), null, "FEE_COLLECTION", null, "NGN", 0, AccountStatus.ACTIVE, 1);
+
+        assertThatThrownBy(() -> TransferRules.requireUsableCustomerAccount(systemAccount, "Source"))
+                .isInstanceOf(PayBridgeException.class)
+                .satisfies(e -> assertThat(((PayBridgeException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    @Test
+    void rejectsInactiveCustomerAccount() {
+        AccountSummary inactiveCustomer = new AccountSummary(
+                UUID.randomUUID(), "0123456789", null, UUID.randomUUID(), "NGN", 5000, AccountStatus.FROZEN, 1);
+
+        assertThatThrownBy(() -> TransferRules.requireUsableCustomerAccount(inactiveCustomer, "Destination"))
+                .isInstanceOf(PayBridgeException.class)
+                .satisfies(e -> assertThat(((PayBridgeException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.ACCOUNT_NOT_ACTIVE));
+    }
+
+    @Test
+    void acceptsActiveCustomerAccount() {
+        AccountSummary activeCustomer = new AccountSummary(
+                UUID.randomUUID(), "0123456789", null, UUID.randomUUID(), "NGN", 5000, AccountStatus.ACTIVE, 1);
+
+        org.assertj.core.api.Assertions.assertThatNoException()
+                .isThrownBy(() -> TransferRules.requireUsableCustomerAccount(activeCustomer, "Source"));
+    }
+}
+```
+
+---
+
+### 3.7 Package: `com.academy.paybridge.transfer.domain`
+
+#### Class: `TransferOutbox`
+- **Source File:** [`TransferOutbox.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/transfer/domain/TransferOutbox.java)
+- **Target Test File:** `com.academy.paybridge.transfer.domain.TransferOutboxTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** The transactional outbox pattern guarantees external payout delivery. Retry scheduling, attempt incrementation, and string truncation (500 chars limit) must work without data loss or exceptions.
+
+```java
+package com.academy.paybridge.transfer.domain;
+
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class TransferOutboxTest {
+
+    @Test
+    void startsPendingWithZeroAttempts() {
+        UUID transferId = UUID.randomUUID();
+        Instant now = Instant.now();
+        TransferOutbox outbox = TransferOutbox.forTransfer(transferId, now);
+
+        assertThat(outbox.getStatus()).isEqualTo(TransferOutbox.Status.PENDING);
+        assertThat(outbox.getAttempts()).isZero();
+        assertThat(outbox.getTransferId()).isEqualTo(transferId);
+        assertThat(outbox.getNextAttemptAt()).isEqualTo(now);
+    }
+
+    @Test
+    void scheduleRetryIncrementsAttemptsAndTruncatesError() {
+        TransferOutbox outbox = TransferOutbox.forTransfer(UUID.randomUUID(), Instant.now());
+        Instant retryTime = Instant.now().plusSeconds(60);
+        String veryLongError = "E".repeat(1000);
+
+        outbox.scheduleRetry(retryTime, veryLongError);
+
+        assertThat(outbox.getAttempts()).isEqualTo(1);
+        assertThat(outbox.getNextAttemptAt()).isEqualTo(retryTime);
+        assertThat(outbox.getLastError()).hasSize(500);
+    }
+
+    @Test
+    void giveUpMarksStatusDoneAndRecordsError() {
+        TransferOutbox outbox = TransferOutbox.forTransfer(UUID.randomUUID(), Instant.now());
+
+        outbox.giveUp("Provider 500 Gateway Timeout");
+
+        assertThat(outbox.getStatus()).isEqualTo(TransferOutbox.Status.DONE);
+        assertThat(outbox.getAttempts()).isEqualTo(1);
+        assertThat(outbox.getLastError()).contains("Gave up sending after 1 attempts");
+    }
+}
+```
+
+---
+
+### 3.8 Package: `com.academy.paybridge.security.service`
+
+#### Class: `ApiKeyHasher`
+- **Source File:** [`ApiKeyHasher.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/security/service/ApiKeyHasher.java)
+- **Target Test File:** `com.academy.paybridge.security.service.ApiKeyHasherTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Verifies standard SHA-256 hash outputs and deterministic 64-character hex strings for client authentication tokens.
+
+```java
+package com.academy.paybridge.security.service;
+
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ApiKeyHasherTest {
+
+    @Test
+    void hashesEmptyStringDeterministically() {
+        // Standard SHA-256 hash of empty string
+        String hash = ApiKeyHasher.sha256Hex("");
+
+        assertThat(hash).isEqualTo("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    }
+
+    @Test
+    void returnsLowercase64HexCharacters() {
+        String hash = ApiKeyHasher.sha256Hex("pb_live_secret_key_12345");
+
+        assertThat(hash).hasSize(64);
+        assertThat(hash).matches("^[a-f0-9]{64}$");
+    }
+}
+```
+
+---
+
+### 3.9 Package: `com.academy.paybridge.settlement.service`
+
+#### Class: `SettlementMetrics`
+- **Source File:** [`SettlementMetrics.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/main/java/com/academy/paybridge/settlement/service/SettlementMetrics.java)
+- **Target Test File:** `com.academy.paybridge.settlement.service.SettlementMetricsTest`
+- **Status:** ⏳ Missing
+- **Why it matters:** Ensures Micrometer gauge registration for open settlement breaks by age buckets (`0-1d`, `2-7d`, `>7d`) and error-resilience during database read failures.
+
+```java
+package com.academy.paybridge.settlement.service;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+
+class SettlementMetricsTest {
+
+    @Test
+    void registersAgeGaugesAndHandlesQuerySafely() {
+        MeterRegistry registry = new SimpleMeterRegistry();
+        JdbcTemplate jdbc = Mockito.mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class))).thenReturn(5);
+
+        new SettlementMetrics(registry, jdbc);
+
+        assertThat(registry.find("paybridge.settlement.breaks.open").tag("age", "0-1d").gauge()).isNotNull();
+        assertThat(registry.find("paybridge.settlement.breaks.open").tag("age", "2-7d").gauge()).isNotNull();
+        assertThat(registry.find("paybridge.settlement.breaks.open").tag("age", ">7d").gauge()).isNotNull();
+        assertThat(registry.find("paybridge.settlement.breaks.open").tag("age", "0-1d").gauge().value()).isEqualTo(5.0);
+    }
+}
+```
+
+---
+
+### 3.10 Package: `com.academy.paybridge` (Architecture Documentation)
+
+#### Class: `ModularityTests`
+- **Source File:** [`ModularityTests.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/ModularityTests.java)
+- **Status:** ⏳ Missing
+- **Why it matters:** Automatically generates Spring Modulith PlantUML and Asciidoc component canvases on build.
+
 ```java
     @Test
     void generateModulithDocumentation() {
@@ -474,35 +640,7 @@ class JpaAuditingConfigTest {
 
 ---
 
-## 7. Upcoming Modules: Test Blueprint Register (Step 3+)
+## 4. Maintenance Workflow
 
-As new modules are implemented in accordance with `BUILD-LOG.md`, append missing tests to this section using the same format:
-
-```
-### Package: `com.academy.paybridge.<module>.<layer>`
-#### Class: `<ClassName>`
-- Method: `<methodName>`
-  - Status: ⏳ Missing
-  - Why it matters: ...
-  - Snippet: ...
-```
-
-### Pre-defined Module Test Templates:
-
-| Module | Key Testing Scenarios to Capture When Written |
-|---|---|
-| **`customer`** | NUBAN customer generation, KYC tier verification, duplicate phone/email uniqueness |
-| **`account`** | Account creation, status transitions (`ACTIVE`, `FROZEN`, `CLOSED`), pessimistic locking on balance updates |
-| **`ledger`** | Double-entry journal balance invariant (sum of debits == sum of credits == 0), append-only constraint enforcement |
-| **`transfer` (internal)** | Idempotency key deduplication (same key = same result, different payload = 422, in-flight = 409), lock ordering by account ID (deadlock prevention) |
-| **`compliance`** | Per-tier daily & single-transaction limit enforcement |
-| **`transfer` (external)** | Transactional outbox polling, Paystack API client WireMock tests, webhook HMAC verification, reversal processing |
-
----
-
-## 8. Maintenance Workflow
-
-To maintain this document:
-1. When writing a new class or method, do **not** write tests directly in test suites if deferring test debt. Instead, create an entry here under its respective package and class.
-2. Provide a fully written, runnable JUnit 5 / AssertJ test snippet.
-3. When paying down test debt, transfer the code snippet from this file into the corresponding test class in `src/test/java` and mark the status here as ✅ Covered.
+1. As new domain models, rules, or utilities are added to the codebase, append their test specifications and snippets to this file under their respective package and class.
+2. When paying down test debt, add the snippet to the corresponding test file in `src/test/java` and move the entry from Section 3 into Section 2 (**Test Debt Resolution Log**).
