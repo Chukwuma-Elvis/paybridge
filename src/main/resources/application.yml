@@ -80,6 +80,13 @@ paybridge:
   # Which payment provider sits behind TransferGateway. "fake" is the built-in simulated bank.
   # Step 11 adds "paystack".
   gateway: fake
+  # Real Paystack, used only when paybridge.gateway is paystack (set it with PAYBRIDGE_GATEWAY=paystack or here).
+  # The key comes from the environment: PAYSTACK_SECRET_KEY=sk_test_... (TEST key first). The pk_ public key is never needed.
+  paystack:
+    secret-key: ${PAYSTACK_SECRET_KEY:}
+    base-url: https://api.paystack.co
+    connect-timeout: 3s
+    read-timeout: 10s
   transfer:
     external-min-minor: 10000              # NGN 100: the smallest external transfer
     # Fee charged ON TOP of the amount for external transfers (internal transfers are free). In kobo.

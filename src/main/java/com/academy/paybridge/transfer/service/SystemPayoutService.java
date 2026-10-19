@@ -129,6 +129,16 @@ public class SystemPayoutService implements PayoutApi {
         return load(reference).map(SystemPayoutService::view);
     }
 
+    /**
+     * The payout's reference as we stored it, found ignoring case. Paystack only accepts lowercase references and sends the
+     * lowercase text back in webhooks, while ours (for example PO-RM-...) are upper case.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> canonicalReference(String reference) {
+        return jdbc.queryForList("select reference from system_payout where lower(reference) = lower(?)", String.class, reference)
+                .stream().findFirst();
+    }
+
     @Transactional(readOnly = true)
     public Optional<Facts> facts(String reference) {
         return load(reference).map(row -> new Facts(row.amountMinor(), row.currency(), row.status()));

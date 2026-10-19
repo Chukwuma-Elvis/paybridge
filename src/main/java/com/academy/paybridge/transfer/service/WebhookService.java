@@ -127,7 +127,7 @@ public class WebhookService {
         if (provider.kind() == WebhookProvider.Kind.PARTNER_FUNDING) {
             return handleFunding(name, event, claim);
         }
-        if (event.reference() != null && event.reference().startsWith(SystemPayoutService.PREFIX)) {
+        if (event.reference() != null && event.reference().regionMatches(true, 0, SystemPayoutService.PREFIX, 0, SystemPayoutService.PREFIX.length())) {
             return handlePayout(name, event, claim);
         }
 
@@ -168,7 +168,8 @@ public class WebhookService {
 
     /** A webhook about a system payout (a remittance paying its recipient): same checks, applied to the payout instead of a transfer. */
     private Result handlePayout(String name, ProviderEvent event, Claim claim) {
-        Optional<SystemPayoutService.Facts> facts = payoutService.facts(event.reference());
+        String reference = payoutService.canonicalReference(event.reference()).orElse(event.reference());
+        Optional<SystemPayoutService.Facts> facts = payoutService.facts(reference);
         if (facts.isEmpty()) {
             recorder.finish(claim.eventRowId(), WebhookStatus.UNMATCHED, "No payout has this reference");
             return done(name, event, Result.UNMATCHED);
@@ -179,7 +180,7 @@ public class WebhookService {
             return done(name, event, Result.AMOUNT_MISMATCH);
         }
         try {
-            payoutService.applyProviderResult(event.reference(), event.outcome(), event.providerReference(), event.message());
+            payoutService.applyProviderResult(reference, event.outcome(), event.providerReference(), event.message());
         } catch (PayBridgeException e) {
             if (e.getErrorCode() == ErrorCode.INVALID_STATE) {
                 recorder.finish(claim.eventRowId(), WebhookStatus.MANUAL_REVIEW, e.getMessage());

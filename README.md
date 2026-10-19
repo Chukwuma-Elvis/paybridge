@@ -536,3 +536,7 @@ This copy is the backend only. A React front end, Swagger UI, Docker and Render 
 ## FX, remittance and settlement (Steps 14 to 28)
 
 PayBridge can now take USD from a corridor partner, convert it to naira at a locked quote, pay the recipient (inside PayBridge or at another bank), refund on failure, and settle with the partner. See [FX-REMITTANCE-SETTLEMENT-GUIDE.md](FX-REMITTANCE-SETTLEMENT-GUIDE.md) for how it works and how to drive it with the built-in fakes. All rates, limits and screening data are placeholders.
+
+## Real Paystack (Step 11)
+
+The default gateway is still the built-in fake bank. To use Paystack in test mode set `PAYSTACK_SECRET_KEY=sk_test_...` and `PAYBRIDGE_GATEWAY=paystack`. See [PAYSTACK-GATEWAY-GUIDE.md](PAYSTACK-GATEWAY-GUIDE.md) for the dashboard settings and a no-money smoke test.

@@ -71,6 +71,15 @@ class SystemPayoutTest extends AbstractSecurityTest {
         return balance(accounts.systemAccountId(account));
     }
 
+    /**
+     * The reconciler only asks about payouts that have been quiet a little while, comparing the app's clock with the database's.
+     * Those two clocks can differ by a moment (the database runs in a container), so a test makes the payouts clearly old first.
+     */
+    private void reconcileNow() {
+        jdbc.update("update system_payout set updated_at = now() - interval '1 minute' where status = 'PROCESSING'");
+        dispatcher.reconcile();
+    }
+
     private PayoutStatus statusOf(String reference) {
         return payouts.find(reference).orElseThrow().status();
     }
@@ -166,7 +175,7 @@ class SystemPayoutTest extends AbstractSecurityTest {
         dispatcher.dispatch(reference);
         assertThat(statusOf(reference)).isEqualTo(PayoutStatus.PROCESSING);
 
-        dispatcher.reconcile();
+        reconcileNow();
 
         assertThat(statusOf(reference)).isEqualTo(PayoutStatus.SUCCESS);
     }
@@ -179,7 +188,7 @@ class SystemPayoutTest extends AbstractSecurityTest {
         dispatcher.dispatch(reference);
         assertThat(balance(source)).as("still held").isEqualTo(-AMOUNT);
 
-        dispatcher.reconcile();
+        reconcileNow();
 
         assertThat(statusOf(reference)).isEqualTo(PayoutStatus.FAILED);
         assertThat(balance(source)).isZero();
@@ -196,7 +205,7 @@ class SystemPayoutTest extends AbstractSecurityTest {
         assertThat(balance(source)).as("money stays held").isEqualTo(-AMOUNT);
         dispatcher.dispatch(reference);   // the retry is the same reference, so the provider does not send twice
 
-        dispatcher.reconcile();
+        reconcileNow();
         assertThat(statusOf(reference)).isEqualTo(PayoutStatus.SUCCESS);
     }
 
@@ -210,7 +219,7 @@ class SystemPayoutTest extends AbstractSecurityTest {
             dispatcher.dispatch(reference);
         }
         assertThat(statusOf(reference)).isEqualTo(PayoutStatus.PROCESSING);
-        dispatcher.reconcile();
+        reconcileNow();
 
         assertThat(statusOf(reference)).isEqualTo(PayoutStatus.FAILED);
         assertThat(balance(source)).isZero();
@@ -239,6 +248,18 @@ class SystemPayoutTest extends AbstractSecurityTest {
         dispatcher.dispatch(reference);
 
         assertThat(webhook(paystack("transfer.success", reference, AMOUNT, "NGN"))).isEqualTo("APPLIED");
+
+        assertThat(statusOf(reference)).isEqualTo(PayoutStatus.SUCCESS);
+    }
+
+    @Test
+    void paystackSendsReferencesBackInLowercaseAndTheyStillMatch() throws Exception {
+        UUID source = newSource();
+        String reference = "PO-RM-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
+        payouts.request(request(reference, source, AMOUNT, "6666"));
+        dispatcher.dispatch(reference);
+
+        assertThat(webhook(paystack("transfer.success", reference.toLowerCase(), AMOUNT, "NGN"))).isEqualTo("APPLIED");
 
         assertThat(statusOf(reference)).isEqualTo(PayoutStatus.SUCCESS);
     }

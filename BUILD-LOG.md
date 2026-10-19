@@ -1193,3 +1193,9 @@ Built from `plans/fx-remittance-settlement.plan.md`; explained in full in [FX-RE
 * Migrations V11 to V19.
 * Bugs found and fixed by the new tests: stale entity caching in account lookups; a `clearAutomatically` query detaching the remittance mid-transaction; reconciler/funding checks starving behind permanently-pending items; settlement payment lines being re-paid by the next batch.
 * Nothing is wired to a real rate source, corridor partner or sanctions list; all are fakes with placeholder figures.
+
+---
+
+## Step 11: real Paystack gateway
+
+Built `PaystackTransferGateway` behind the existing `TransferGateway` interface (name enquiry, recipients, transfers, status). Selected only with `paybridge.gateway=paystack`; the fake gateway is unchanged and remains the default. Secret key comes from `PAYSTACK_SECRET_KEY`. Unclear answers are never treated as failures. Payout webhooks now match references ignoring case, because Paystack requires and returns lowercase references. Explained in [PAYSTACK-GATEWAY-GUIDE.md](PAYSTACK-GATEWAY-GUIDE.md). Not yet exercised against the real Paystack: see section 8 of that guide.
