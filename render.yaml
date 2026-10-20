@@ -1,0 +1,65 @@
+# ==============================================================================
+# Render Blueprint Specification for PayBridge Core Banking Engine
+# Reference: https://render.com/docs/blueprint-spec
+# ==============================================================================
+version: "1"
+
+services:
+  - type: web
+    name: paybridge
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      # Profile and Environment Control
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: PAYBRIDGE_SECURITY_ENABLED
+        value: "true"
+      - key: PAYBRIDGE_DEV_FUNDING_ENABLED
+        value: "false"
+      - key: PAYBRIDGE_GATEWAY
+        value: fake
+
+      # Bootstrap Admin Key (Render generates a secure random 32+ char token)
+      - key: PAYBRIDGE_ADMIN_API_KEY
+        generateValue: true
+
+      # Render Managed Database Wiring
+      # The Dockerfile entrypoint auto-translates postgresql:// into jdbc:postgresql://
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: paybridge-db
+          property: connectionString
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: paybridge-db
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: paybridge-db
+          property: password
+      - key: DATABASE_URL
+        fromDatabase:
+          name: paybridge-db
+          property: connectionString
+
+      # Optional Production Integrations (Filled manually in Render Dashboard if enabled)
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: MONNIFY_SECRET_KEY
+        sync: false
+      - key: FAKEPARTNER_SECRET
+        sync: false
+
+databases:
+  - name: paybridge-db
+    plan: starter
+    region: oregon
+    databaseName: paybridge
+    user: paybridge
+    postgresMajorVersion: "17"
