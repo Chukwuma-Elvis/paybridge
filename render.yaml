@@ -24,8 +24,7 @@ services:
     dockerContext: .
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
-    # The app finishes in-flight requests on SIGTERM (server.shutdown=graceful); give it time to do so.
-    maxShutdownDelaySeconds: 30
+    # (maxShutdownDelaySeconds is not supported on free services, so Render's default shutdown time applies.)
     autoDeployTrigger: commit
     envVars:
       # Makes Java use only its fast, light compiler. At 0.1 CPU this cut start-up from about 9.4 minutes to about 4
