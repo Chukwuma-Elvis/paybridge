@@ -149,9 +149,9 @@ USER 10001:10001
 EXPOSE 8080
 STOPSIGNAL SIGTERM
 
-# 7. Health check with a long start period: on a half-CPU host the app takes about two minutes to start, and a probe
+# 7. Health check with a long start period: on a half-CPU host the app takes between 1.5 and 5 minutes to start, and a probe
 #    that fails during start-up must not count against it. /actuator/health is public and is the same path Render uses.
-HEALTHCHECK --interval=15s --timeout=3s --start-period=150s --retries=3 \
+HEALTHCHECK --interval=15s --timeout=3s --start-period=300s --retries=3 \
   CMD wget -qO- http://localhost:${PORT:-8080}/actuator/health || exit 1
 
 # 8. Exec-form entrypoint: the script ends with `exec java ...`, so the JVM is PID 1 and receives SIGTERM directly.

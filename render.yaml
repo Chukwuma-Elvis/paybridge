@@ -1,65 +1,71 @@
 # ==============================================================================
-# Render Blueprint Specification for PayBridge Core Banking Engine
+# Render Blueprint for PayBridge
 # Reference: https://render.com/docs/blueprint-spec
+#
+# Creates ONE web service (built from the Dockerfile) and ONE Postgres database in the same region,
+# joined over Render's private network. Plan names follow Render's current naming (see
+# https://render.com/docs/compute-plans): CPU-and-RAM IDs, not the old "starter" names.
 # ==============================================================================
-version: "1"
 
 services:
   - type: web
     name: paybridge
     runtime: docker
-    plan: starter
+    # 0.5 CPU / 512 MB. This is the size the image was tested at (about 345-370 MB used, startup about 1.5 to 2.5 minutes).
+    # If Render ever restarts it for running out of memory, move to 1c-2g.
+    plan: 0.5c-512mb
     region: oregon
     dockerContext: .
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
-    autoDeploy: true
+    # The app finishes in-flight requests on SIGTERM (server.shutdown=graceful); give it time to do so.
+    maxShutdownDelaySeconds: 30
+    autoDeployTrigger: commit
+    # KEEP THIS AT ONE INSTANCE. The background engines (remittance, payouts, settlement closer) run inside the app;
+    # more than one copy running together has not been tested.
+    numInstances: 1
     envVars:
-      # Profile and Environment Control
       - key: SPRING_PROFILES_ACTIVE
         value: prod
       - key: PAYBRIDGE_SECURITY_ENABLED
         value: "true"
       - key: PAYBRIDGE_DEV_FUNDING_ENABLED
         value: "false"
+      # fake = the built-in pretend bank. Change to "paystack" (and set PAYSTACK_SECRET_KEY) to use real Paystack.
       - key: PAYBRIDGE_GATEWAY
         value: fake
 
-      # Bootstrap Admin Key (Render generates a secure random 32+ char token)
+      # The first admin key. YOU choose it; Render prompts for it when the Blueprint is created.
+      # It must be 32 or more characters of letters, digits, _ or - ONLY.
+      # Do NOT use Render's generateValue here: it makes a base64 value (with + / =) and PayBridge refuses to start with it.
+      # A good one:  openssl rand -hex 32
       - key: PAYBRIDGE_ADMIN_API_KEY
-        generateValue: true
+        sync: false
 
-      # Render Managed Database Wiring
-      # The Dockerfile entrypoint auto-translates postgresql:// into jdbc:postgresql://
-      - key: SPRING_DATASOURCE_URL
-        fromDatabase:
-          name: paybridge-db
-          property: connectionString
-      - key: SPRING_DATASOURCE_USERNAME
-        fromDatabase:
-          name: paybridge-db
-          property: user
-      - key: SPRING_DATASOURCE_PASSWORD
-        fromDatabase:
-          name: paybridge-db
-          property: password
+      # Database. The internal connection string contains the user and password; docker-entrypoint.sh converts it to the
+      # JDBC form the Java driver needs and splits the credentials out, so nothing else is required here.
       - key: DATABASE_URL
         fromDatabase:
           name: paybridge-db
           property: connectionString
 
-      # Optional Production Integrations (Filled manually in Render Dashboard if enabled)
+      # Optional integrations, filled in the Render Dashboard only if used. Never put real values in this file.
       - key: PAYSTACK_SECRET_KEY
         sync: false
       - key: MONNIFY_SECRET_KEY
         sync: false
+      # Shared secret with the corridor partner for funding webhooks. Without it the partner webhook stays switched off.
       - key: FAKEPARTNER_SECRET
         sync: false
 
 databases:
   - name: paybridge-db
-    plan: starter
+    # Smallest paid Postgres plan (0.1 CPU, 256 MB, up to 100 connections). "starter" is not a valid Postgres plan name.
+    plan: 0.1c-256mb
     region: oregon
     databaseName: paybridge
     user: paybridge
     postgresMajorVersion: "17"
+    # An empty list blocks all connections from the public internet; only Render services in the same region can connect.
+    # (Left out, Render would allow any IP, protected by the password alone.)
+    ipAllowList: []
