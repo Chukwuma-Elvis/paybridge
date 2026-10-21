@@ -1,19 +1,25 @@
 # ==============================================================================
-# Render Blueprint for PayBridge
-# Reference: https://render.com/docs/blueprint-spec
+# Render Blueprint for PayBridge: FREE tier
+# Reference: https://render.com/docs/blueprint-spec   Free-tier rules: https://render.com/docs/free
+# The paid-plan version is render.paid.yaml.
 #
-# Creates ONE web service (built from the Dockerfile) and ONE Postgres database in the same region,
-# joined over Render's private network. Plan names follow Render's current naming (see
-# https://render.com/docs/compute-plans): CPU-and-RAM IDs, not the old "starter" names.
+# WHAT THE FREE TIER MEANS (read before deploying):
+#  * The web service gets 0.1 CPU and 512 MB. It SPINS DOWN after 15 minutes without a request, and waking it takes
+#    about 4 minutes for this app (measured at this size), during which requests fail. Background work (remittance
+#    engine, payouts, settlement) only runs while the service is awake, and a partner or Paystack webhook that arrives
+#    while it sleeps is missed. To stay awake, ping /actuator/health every 10 minutes from an external uptime monitor.
+#  * Render may restart a free service at any time (4 minutes of downtime each time).
+#  * The free database EXPIRES 30 days after creation (14 days of grace to upgrade, then it and its data are deleted),
+#    holds 1 GB, and has NO backups. Only one free database is allowed per workspace.
+#  * Render cancels a deploy that is not healthy within 15 minutes. This app starts in about 4 minutes at 0.1 CPU.
+# Treat this as a sandbox for testing, not for anything you cannot lose.
 # ==============================================================================
 
 services:
   - type: web
     name: paybridge
     runtime: docker
-    # 0.5 CPU / 512 MB. This is the size the image was tested at (about 345-370 MB used, startup about 1.5 to 2.5 minutes).
-    # If Render ever restarts it for running out of memory, move to 1c-2g.
-    plan: 0.5c-512mb
+    plan: free
     region: oregon
     dockerContext: .
     dockerfilePath: ./Dockerfile
@@ -21,10 +27,11 @@ services:
     # The app finishes in-flight requests on SIGTERM (server.shutdown=graceful); give it time to do so.
     maxShutdownDelaySeconds: 30
     autoDeployTrigger: commit
-    # KEEP THIS AT ONE INSTANCE. The background engines (remittance, payouts, settlement closer) run inside the app;
-    # more than one copy running together has not been tested.
-    numInstances: 1
     envVars:
+      # Makes Java use only its fast, light compiler. At 0.1 CPU this cut start-up from about 9.4 minutes to about 4
+      # and lowered memory use (measured). Not needed on paid plans.
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:TieredStopAtLevel=1
       - key: SPRING_PROFILES_ACTIVE
         value: prod
       - key: PAYBRIDGE_SECURITY_ENABLED
@@ -60,12 +67,10 @@ services:
 
 databases:
   - name: paybridge-db
-    # Smallest paid Postgres plan (0.1 CPU, 256 MB, up to 100 connections). "starter" is not a valid Postgres plan name.
-    plan: 0.1c-256mb
+    plan: free
     region: oregon
     databaseName: paybridge
     user: paybridge
     postgresMajorVersion: "17"
-    # An empty list blocks all connections from the public internet; only Render services in the same region can connect.
-    # (Left out, Render would allow any IP, protected by the password alone.)
+    # An empty list blocks all connections from the public internet; only your web service (same region) can connect.
     ipAllowList: []
