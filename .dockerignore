@@ -17,3 +17,6 @@ docker-compose*.yml
 compose.yaml
 .env*
 secrets/
+
+plans/
+src/test/
