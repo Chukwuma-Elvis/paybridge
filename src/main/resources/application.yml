@@ -19,6 +19,16 @@ management:
         # Only "health" is open to everyone. "metrics" needs an admin API key (see paybridge.security below).
         include: health,metrics
 
+springdoc:
+  # Swagger UI and the OpenAPI description. OFF unless you switch them on (SPRINGDOC_API_DOCS_ENABLED=true and
+  # SPRINGDOC_SWAGGER_UI_ENABLED=true). The pages are open to everyone, but every API call made from them still needs a key.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+    # Remember the key you typed into Authorize when the page is reloaded.
+    persist-authorization: true
+
 logging:
   pattern:
     # Log4j2 syntax: the Logback form %X{requestId:-} makes Log4j2 look for a key literally named "requestId:-".

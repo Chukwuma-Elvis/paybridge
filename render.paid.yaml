@@ -32,6 +32,11 @@ services:
       - key: PAYBRIDGE_DEV_FUNDING_ENABLED
         value: "false"
       # fake = the built-in pretend bank. Change to "paystack" (and set PAYSTACK_SECRET_KEY) to use real Paystack.
+      # Swagger UI at /swagger-ui.html (the page is open; every call you try from it still needs an API key).
+      - key: SPRINGDOC_API_DOCS_ENABLED
+        value: "true"
+      - key: SPRINGDOC_SWAGGER_UI_ENABLED
+        value: "true"
       - key: PAYBRIDGE_GATEWAY
         value: fake
 

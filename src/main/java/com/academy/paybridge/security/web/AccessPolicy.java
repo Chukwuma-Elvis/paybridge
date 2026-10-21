@@ -32,7 +32,7 @@ final class AccessPolicy {
         ADMIN
     }
 
-    /** The only open addresses: health probes used by hosting platforms and the front end. */
+    /** Open addresses: health probes used by hosting platforms and the front end (the Swagger pages are handled below). */
     private static final Set<String> PUBLIC_PATHS =
             Set.of("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness");
 
@@ -45,6 +45,11 @@ final class AccessPolicy {
             return Requirement.ADMIN;
         }
         if (PUBLIC_PATHS.contains(path)) {
+            return Requirement.PUBLIC;
+        }
+        if (path.equals("/swagger-ui.html") || isUnder(path, "/swagger-ui") || isUnder(path, "/v3/api-docs")) {
+            // The Swagger page and the API description: a browser cannot attach an API key to loading a page. They only
+            // exist when springdoc is switched on; every call made from the page still needs a key.
             return Requirement.PUBLIC;
         }
         if (isUnder(path, "/actuator") || isUnder(path, "/api/admin") || isUnder(path, "/api/dev")) {

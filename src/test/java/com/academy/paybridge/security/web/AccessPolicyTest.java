@@ -31,7 +31,12 @@ class AccessPolicyTest {
             "/api/webhooks/paystack,     SIGNED_WEBHOOK",
             "/api/webhooks/monnify,      SIGNED_WEBHOOK",
             "/api/webhooks,              SIGNED_WEBHOOK",
-            "/api/webhooksx/paystack,    ANY_KEY"
+            "/api/webhooksx/paystack,    ANY_KEY",
+            "/swagger-ui.html,           PUBLIC",
+            "/swagger-ui/index.html,     PUBLIC",
+            "/v3/api-docs,               PUBLIC",
+            "/v3/api-docs/swagger-config, PUBLIC",
+            "/swagger-uix,               ANY_KEY"
     })
     void eachAddressNeedsTheRightKind(String path, Requirement expected) {
         assertThat(AccessPolicy.requirementFor(path)).isEqualTo(expected);
