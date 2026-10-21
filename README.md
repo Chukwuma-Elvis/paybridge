@@ -5,12 +5,12 @@
 [![Spring Modulith](https://img.shields.io/badge/Spring%20Modulith-2.1.1-6DB33F?style=for-the-badge)](https://spring.io/projects/spring-modulith)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Maven](https://img.shields.io/badge/Maven-Wrapper-C71A36?style=for-the-badge&logo=apachemaven&logoColor=white)](https://maven.apache.org/)
-[![Tests](https://img.shields.io/badge/Tests-866%20passing-brightgreen?style=for-the-badge)](#-testing--verification)
+[![Tests](https://img.shields.io/badge/Tests-865%20passing-brightgreen?style=for-the-badge)](#-testing--verification)
 
 > **A Core Banking, Remittance & Settlement Engine engineered as a Spring Boot Modular Monolith.**  
 > Built to model real-world financial infrastructure: double-entry bookkeeping, zero-overdraft concurrency locking, strict idempotency, an asynchronous outbox gateway dispatcher with reconciliation, real and simulated Paystack integration, multi-currency FX quotes, inbound cross-border remittances, and automated statement reconciliation batches.
 
-**Status (October 2026):** All 28 engineering steps across Phase 1 (Local Transfers & Hardening) and Phase 2 (Multi-Currency Ledger, FX, Remittance, AML Screening, and Batch Settlement) are fully implemented and verified with **866 passing automated tests**. See [Project Status](#-project-status) for the complete milestone breakdown, [`test.md`](test.md) for the live test debt and coverage catalog, and [`BUILD-LOG.md`](BUILD-LOG.md) for architectural decisions and reasoning.
+**Status (October 2026):** All 28 engineering steps across Phase 1 (Local Transfers & Hardening) and Phase 2 (Multi-Currency Ledger, FX, Remittance, AML Screening, and Batch Settlement) are fully implemented and verified with **865 passing automated tests (1 live-Paystack smoke test skipped)**. See [Project Status](#-project-status) for the complete milestone breakdown, [`test.md`](test.md) for the live test debt and coverage catalog, and [`BUILD-LOG.md`](BUILD-LOG.md) for architectural decisions and reasoning.
 
 ---
 
@@ -243,7 +243,7 @@ PayBridge supports both live external gateways and deterministic simulation prof
 ### 1. Real Paystack Integration (`PaystackTransferGateway`)
 - Enabled by configuring `paybridge.gateway: paystack` and supplying `PAYSTACK_SECRET_KEY=sk_test_...`.
 - Implements name enquiry (account resolution), recipient creation, transfer initiation, and transfer status polling.
-- Backed by full WireMock unit test suites (`PaystackTransferGatewayTest`), Spring wiring tests (`PaystackWiringTest`), and conditional live sandbox smoke tests (`PaystackLiveSmokeTest`).
+- Backed by full unit test suites using Spring's MockRestServiceServer (`PaystackTransferGatewayTest`), Spring wiring tests (`PaystackWiringTest`), and conditional live sandbox smoke tests (`PaystackLiveSmokeTest`).
 - Webhook signature verification uses HMAC-SHA512 against raw payload bytes before deserialization.
 
 ### 2. Deterministic Simulated Bank (`FakeTransferGateway`)
@@ -413,11 +413,11 @@ Execute the complete automated test suite:
 ./mvnw test
 ```
 
-### Test Suite Highlights (**866 tests passing across 67 test classes**):
+### Test Suite Highlights (**865 tests passing, 1 skipped, across 71 test files**):
 * **Concurrency & Race Conditions (`ConcurrencyTest`):** Executes 40 to 200 simultaneous multi-threaded transfers (including circular transfers) to verify zero overdrawing, deadlock immunity, and strict balance conservation.
 * **Idempotency Races (`DuplicateRequestRaceTest`):** Fires parallel threads with identical idempotency keys; exactly one succeeds while others receive replay responses.
 * **Double-Entry & Multi-Currency Ledger (`LedgerServiceTest`, `MultiCurrencyLedgerTest`):** Verifies zero-sum journal line enforcement and independent currency balance isolation.
-* **External Payouts & WireMock Gateway (`PaystackTransferGatewayTest`, `ExternalTransferTest`):** Validates outbox dispatch, backoff retries, error truncation, and Paystack REST responses using WireMock.
+* **External Payouts & Mocked Gateway (`PaystackTransferGatewayTest`, `ExternalTransferTest`):** Validates outbox dispatch, backoff retries, error truncation, and Paystack REST responses using MockRestServiceServer.
 * **FX & Remittance Lifecycle (`FxConversionTest`, `RemittanceFlowTest`):** Tests full corridor funding, AML screening gates, currency conversions, recipient payouts, and partner refunds.
 * **Settlement Engine (`SettlementBatchTest`, `SettlementBreakTest`, `StatementMatcherTest`):** Validates batch aggregation, CSV/JSON statement ingestion, automated reconciliation matching, and break age tracking.
 * **Architecture Integrity (`ModularityTests`):** Verifies Spring Modulith module boundaries, ensuring strict decoupling across contexts.
@@ -438,7 +438,7 @@ Execute the complete automated test suite:
 | **8** | `compliance`: Per-tier single and daily quota reservations | ✅ Complete |
 | **9** | `notification`: Asynchronous event-driven customer alerts | ✅ Complete |
 | **10** | `transfer` (external): Outbox dispatcher, reconciler, stepped fees, reversals | ✅ Complete |
-| **11** | Real Paystack gateway: `PaystackTransferGateway`, WireMock & live tests | ✅ Complete |
+| **11** | Real Paystack gateway: `PaystackTransferGateway`, MockRestServiceServer & live tests | ✅ Complete |
 | **12** | Payment webhooks: Paystack & Monnify HMAC verification, deduplication | ✅ Complete |
 | **13** | Hardening: Hashed API keys, sliding-window rate limiting, MDC tracing | ✅ Complete |
 | **14–18** | Multi-currency foundation & FX: Rates, locked quotes, position accounts | ✅ Complete |
@@ -455,3 +455,12 @@ Execute the complete automated test suite:
 * [`plans/fx-remittance-settlement.plan.md`](plans/fx-remittance-settlement.plan.md): Architectural design blueprints and execution plans for cross-border settlement.
 * `compose.yaml`: Local PostgreSQL 17 multi-container orchestration.
 * `src/main/resources/db/migration`: Versioned Flyway database migrations (`V1` to `V19`).
+
+
+---
+
+## Deployment (Docker and Render)
+
+The repository ships a multi-stage `Dockerfile` (custom jlink Java runtime plus a class-data-sharing archive for faster start), `docker-entrypoint.sh`, and two Render blueprints: `render.yaml` (free tier) and `render.paid.yaml`. `demo/demo.sh` walks the deployed sandbox end to end.
+
+Free-tier facts: the service sleeps after 15 minutes idle and takes about 4-5 minutes to wake; the free database expires after 30 days and has no backups. Set `PAYBRIDGE_ADMIN_API_KEY` (32+ characters of letters, digits, `_`, `-`) before the first start, or every protected endpoint answers 401.

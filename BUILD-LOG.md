@@ -7,7 +7,7 @@ It is written for a beginner learning Java and Spring Boot by building a real pa
 > If a term is new, look it up in the [Glossary](#12-glossary). Status markers:
 > ✅ done · 🔄 in progress · ⏳ not started.
 
-**Last updated:** 2026-10-14 · **Current position:** Steps 1 to 10, **Step 12 (provider webhooks)** and **Step 13 (security, rate limiting, observability)** are built and verified (488 automated tests, plus live runs against the real application). **Step 11 (the real Paystack/Monnify clients) is not done.** A code-free plan for `fx`, `remittance` and `settlement` (Steps 14 to 28) is in `plans/fx-remittance-settlement.plan.md`. See [section 15](#15-status-and-what-is-left-2026-10-13) for what is left, [section 17](#17-step-13-security-rate-limiting-and-observability-2026-10-14) for Step 13 and [section 18](#18-step-12-provider-webhooks-and-the-moneytest-gaps-2026-10-14) for Step 12.
+**Last updated:** 2026-10-21 · **Current position:** all Steps 1 to 28 are built and verified (865 automated tests passing, 1 skipped; Step 11 now has a real Paystack client, Monnify is still not built), and the app is containerised and prepared for Render's free tier. A code-free plan for `fx`, `remittance` and `settlement` (Steps 14 to 28) is in `plans/fx-remittance-settlement.plan.md`. See [section 15](#15-status-and-what-is-left-2026-10-13) for what is left, [section 17](#17-step-13-security-rate-limiting-and-observability-2026-10-14) for Step 13 and [section 18](#18-step-12-provider-webhooks-and-the-moneytest-gaps-2026-10-14) for Step 12.
 
 ---
 
@@ -319,8 +319,8 @@ timeouts, failures and reversals on demand.
 | 9 | `notification` (thin): event listeners | ✅ |
 | 10 | `transfer` (external) with a fake gateway, outbox, fees, reversals | ✅ |
 | 11 | Paystack (or Monnify) client, tested with a mock server | ⏸ on hold (needs a test account; see section 16 for backups). The webhook half (Step 12) is done |
-| 12 | Provider webhooks (Paystack and Monnify format): signature, de-duplication, cross-check, manual review | ✅ (section 18; `STEP-12-GUIDE.md`) |
-| 13 | Hardening: API-key authentication, rate limiting, logging, metrics, request id on background threads | ✅ (sections 14 and 17; line-by-line explanation in `STEP-13-GUIDE.md`) |
+| 12 | Provider webhooks (Paystack and Monnify format): signature, de-duplication, cross-check, manual review | ✅ (section 18; `guide/02-STEP-12-WEBHOOKS-GUIDE.md`) |
+| 13 | Hardening: API-key authentication, rate limiting, logging, metrics, request id on background threads | ✅ (sections 14 and 17; line-by-line explanation in `guide/03-STEP-13-SECURITY-GUIDE.md`) |
 
 Each step ends with passing tests before the next one starts.
 
@@ -1044,7 +1044,7 @@ and `NOT_FOUND`.
 ## 17. Step 13: security, rate limiting and observability (2026-10-14)
 
 **Goal:** close the biggest gap (anyone who could reach the app could create customers, move money and use the endpoint that creates money) and add the
-operating tools a real service needs. The full line-by-line explanation, with analogies, is in [`STEP-13-GUIDE.md`](STEP-13-GUIDE.md); this is the record.
+operating tools a real service needs. The full line-by-line explanation, with analogies, is in [`guide/03-STEP-13-SECURITY-GUIDE.md`](guide/03-STEP-13-SECURITY-GUIDE.md); this is the record.
 
 ### What was built
 
@@ -1109,13 +1109,13 @@ of one lookup per request; roles are coarse; no key expiry or "last used" time; 
 
 ### What this changes for the demos
 
-Every command needs `-H "X-API-Key: ..."`, and test funding needs the **admin** key. Setup is in the README and in section 10 of `STEP-13-GUIDE.md`.
+Every command needs `-H "X-API-Key: ..."`, and test funding needs the **admin** key. Setup is in the README and in section 10 of `guide/03-STEP-13-SECURITY-GUIDE.md`.
 
 ---
 
 ## 18. Step 12: provider webhooks, and the `MoneyTest` gaps (2026-10-14)
 
-**Goal:** let a payment provider *tell* PayBridge what became of an external transfer (including a **reversal after success**, which polling could never reveal), compatible with Paystack or Monnify, using what already existed. The full line-by-line explanation is in [`STEP-12-GUIDE.md`](STEP-12-GUIDE.md); this is the record.
+**Goal:** let a payment provider *tell* PayBridge what became of an external transfer (including a **reversal after success**, which polling could never reveal), compatible with Paystack or Monnify, using what already existed. The full line-by-line explanation is in [`guide/02-STEP-12-WEBHOOKS-GUIDE.md`](guide/02-STEP-12-WEBHOOKS-GUIDE.md); this is the record.
 
 ### What was built
 
@@ -1187,7 +1187,7 @@ A detailed, **code-free** execution plan is in [`plans/fx-remittance-settlement.
 
 ## Steps 14 to 28: FX, remittance and settlement
 
-Built from `plans/fx-remittance-settlement.plan.md`; explained in full in [FX-REMITTANCE-SETTLEMENT-GUIDE.md](FX-REMITTANCE-SETTLEMENT-GUIDE.md).
+Built from `plans/fx-remittance-settlement.plan.md`; explained in full in [guide/04-FX-REMITTANCE-SETTLEMENT-GUIDE.md](guide/04-FX-REMITTANCE-SETTLEMENT-GUIDE.md).
 
 * New modules: `fx` (rates, quotes, conversion), `remittance` (state machine, screening gate, funding, convert/pay/refund), `settlement` (batches, statements, matching, breaks). Extended: `compliance` (screening cases, USD limits, velocity), `transfer` (system payouts, partner-funding webhook kind), `ledger` (line reads), `notification`.
 * Migrations V11 to V19.
@@ -1198,4 +1198,14 @@ Built from `plans/fx-remittance-settlement.plan.md`; explained in full in [FX-RE
 
 ## Step 11: real Paystack gateway
 
-Built `PaystackTransferGateway` behind the existing `TransferGateway` interface (name enquiry, recipients, transfers, status). Selected only with `paybridge.gateway=paystack`; the fake gateway is unchanged and remains the default. Secret key comes from `PAYSTACK_SECRET_KEY`. Unclear answers are never treated as failures. Payout webhooks now match references ignoring case, because Paystack requires and returns lowercase references. Explained in [PAYSTACK-GATEWAY-GUIDE.md](PAYSTACK-GATEWAY-GUIDE.md). Not yet exercised against the real Paystack: see section 8 of that guide.
+Built `PaystackTransferGateway` behind the existing `TransferGateway` interface (name enquiry, recipients, transfers, status). Selected only with `paybridge.gateway=paystack`; the fake gateway is unchanged and remains the default. Secret key comes from `PAYSTACK_SECRET_KEY`. Unclear answers are never treated as failures. Payout webhooks now match references ignoring case, because Paystack requires and returns lowercase references. Explained in [guide/05-PAYSTACK-GATEWAY-GUIDE.md](guide/05-PAYSTACK-GATEWAY-GUIDE.md). Not yet exercised against the real Paystack: see section 8 of that guide.
+
+
+---
+
+## Deployment readiness (2026-10)
+
+* Rewrote the Dockerfile (multi-stage, jlink runtime, CDS archive, health start period 300 s) and added `docker-entrypoint.sh`, which converts Render's `postgresql://user:pass@host/db` into a JDBC URL and URL-decodes the password.
+* Added `render.yaml` (free tier) and `render.paid.yaml`. Free-tier limits measured at 0.1 CPU: start about 4-5 minutes with `-XX:TieredStopAtLevel=1` (563 s without).
+* Found by a real deploy attempt: if `PAYBRIDGE_ADMIN_API_KEY` is empty the app starts but all protected endpoints answer 401; fixed by setting the variable and redeploying.
+* Added `demo/demo.sh`.

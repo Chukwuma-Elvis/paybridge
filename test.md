@@ -17,7 +17,7 @@
 
 ### Current Suite Metrics
 - **Total Executing Test Suites:** 67 test classes
-- **Total Passing Tests:** 866 tests (All green, 0 failures, 0 errors)
+- **Total Passing Tests:** 865 tests passing, 1 skipped (All green, 0 failures, 0 errors)
 - **Paid-Down Test Debt:** All previously identified `MoneyTest` test debt (sign predicates, `negate()`, `compareTo()`, immutability guarantees, factory methods, equals/hashCode) has been fully implemented in [`MoneyTest.java`](file:///C:/Users/CHUKWUMA/projects/paybridge/paybridge/src/test/java/com/academy/paybridge/shared/money/MoneyTest.java).
 - **Current Test Debt Focus:** Targeted unit tests for utility/security/audit classes (`AuditableEntity`, `JpaAuditingConfig`, `RequestIdFilter`, `IdempotencyKeyHeader`, `TransferRules`, `TransferOutbox`, `ApiKeyHasher`, `SettlementMetrics`).
 

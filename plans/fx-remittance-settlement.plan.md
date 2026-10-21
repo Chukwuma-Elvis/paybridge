@@ -618,7 +618,7 @@ Plans change. When one does, do it in the open:
 | Date | Change | Reason |
 |---|---|---|
 | 2026-10-14 | Initial plan | Requested after Steps 12 and 13 |
-| 2026-10-14 | Steps 14 to 28 executed | Built and tested; see FX-REMITTANCE-SETTLEMENT-GUIDE.md section 12 for the deviations: conversion link in table fx_conversion (not a ledger column); quote consumed at remittance creation; new status AWAITING_FUNDING; ADR-0006 realised as a separate SystemPayoutService instead of changing ExternalTransferService; migrations V11 to V19 |
+| 2026-10-14 | Steps 14 to 28 executed | Built and tested; see guide/04-FX-REMITTANCE-SETTLEMENT-GUIDE.md section 12 for the deviations: conversion link in table fx_conversion (not a ledger column); quote consumed at remittance creation; new status AWAITING_FUNDING; ADR-0006 realised as a separate SystemPayoutService instead of changing ExternalTransferService; migrations V11 to V19 |
 
 ---
 
