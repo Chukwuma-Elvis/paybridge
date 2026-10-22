@@ -1,5 +1,6 @@
 package com.academy.paybridge.account.repository;
 
+import com.academy.paybridge.account.api.AccountType;
 import com.academy.paybridge.account.domain.Account;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -29,6 +30,8 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     Optional<String> findCurrencyByCode(@Param("code") String code);
 
     List<Account> findByOwnerCustomerIdOrderByCreatedAtAsc(UUID ownerCustomerId);
+
+    List<Account> findByTypeOrderByCreatedAtDesc(AccountType type);
 
     /** SELECT ... FOR UPDATE: other transactions wait here until we commit or roll back. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

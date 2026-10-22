@@ -47,6 +47,15 @@ public class CustomerService implements CustomerApi {
         return toSummary(customer);
     }
 
+    @Transactional(readOnly = true)
+    public java.util.List<CustomerSummary> listRecentCustomers() {
+        return customerRepository.findAll(org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                .stream()
+                .map(CustomerService::toSummary)
+                .toList();
+    }
+
     @Override
     @Transactional(readOnly = true)
     public CustomerSummary getCustomer(UUID customerId) {

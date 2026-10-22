@@ -34,6 +34,13 @@ public class CustomerController {
                 .body(CustomerResponse.from(created));
     }
 
+    @GetMapping
+    public java.util.List<CustomerResponse> list() {
+        return customerService.listRecentCustomers().stream()
+                .map(CustomerResponse::from)
+                .toList();
+    }
+
     @GetMapping("/{id}")
     public CustomerResponse get(@PathVariable UUID id) {
         return CustomerResponse.from(customerService.getCustomer(id));

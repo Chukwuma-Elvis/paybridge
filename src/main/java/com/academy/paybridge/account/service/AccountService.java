@@ -2,6 +2,7 @@ package com.academy.paybridge.account.service;
 
 import com.academy.paybridge.account.api.AccountApi;
 import com.academy.paybridge.account.api.AccountSummary;
+import com.academy.paybridge.account.api.AccountType;
 import com.academy.paybridge.account.api.SystemAccount;
 import com.academy.paybridge.account.domain.Account;
 import com.academy.paybridge.account.domain.Nuban;
@@ -62,6 +63,13 @@ public class AccountService implements AccountApi {
         String accountNumber = Nuban.generate(bankCode, accountRepository.nextAccountSerial());
         Account account = accountRepository.save(Account.openForCustomer(accountNumber, customerId, currencyCode));
         return toSummary(account);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccountSummary> listRecentCustomerAccounts() {
+        return accountRepository.findByTypeOrderByCreatedAtDesc(AccountType.CUSTOMER).stream()
+                .map(AccountService::toSummary)
+                .toList();
     }
 
     @Transactional(readOnly = true)

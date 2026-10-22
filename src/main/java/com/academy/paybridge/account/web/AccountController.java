@@ -45,7 +45,10 @@ public class AccountController {
     }
 
     @GetMapping
-    public List<AccountResponse> listForCustomer(@RequestParam UUID customerId) {
-        return accountService.listForCustomer(customerId).stream().map(AccountResponse::from).toList();
+    public List<AccountResponse> listForCustomer(@RequestParam(required = false) UUID customerId) {
+        if (customerId != null) {
+            return accountService.listForCustomer(customerId).stream().map(AccountResponse::from).toList();
+        }
+        return accountService.listRecentCustomerAccounts().stream().map(AccountResponse::from).toList();
     }
 }
