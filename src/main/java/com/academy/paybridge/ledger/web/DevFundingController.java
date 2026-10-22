@@ -12,7 +12,7 @@ import com.academy.paybridge.shared.exception.ErrorCode;
 import com.academy.paybridge.shared.exception.PayBridgeException;
 import com.academy.paybridge.shared.money.Money;
 import jakarta.validation.Valid;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,12 +24,12 @@ import java.util.UUID;
 
 /**
  * TEST SCAFFOLDING. There is no real deposit flow yet, so this puts test naira into an account by moving it
- * from the FUNDING_SOURCE system account. Switch it off with {@code paybridge.dev.funding-enabled=false}
- * anywhere that is not a developer's machine.
+ * from the FUNDING_SOURCE system account. Active when {@code paybridge.dev.funding-enabled=true} or when running
+ * with the fake sandbox gateway. Requires an ADMIN API key in all environments.
  */
 @RestController
 @RequestMapping("/api/dev/accounts")
-@ConditionalOnProperty(name = "paybridge.dev.funding-enabled", havingValue = "true")
+@ConditionalOnExpression("${paybridge.dev.funding-enabled:false} == true or '${paybridge.gateway:fake}'.equalsIgnoreCase('fake')")
 public class DevFundingController {
 
     private final LedgerApi ledgerApi;
