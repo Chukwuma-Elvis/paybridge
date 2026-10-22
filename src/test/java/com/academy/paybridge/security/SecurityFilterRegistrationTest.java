@@ -2,6 +2,7 @@ package com.academy.paybridge.security;
 
 import com.academy.paybridge.AbstractIntegrationTest;
 import com.academy.paybridge.security.web.ApiKeyAuthFilter;
+import com.academy.paybridge.security.web.CorsFilter;
 import com.academy.paybridge.security.web.RateLimitFilter;
 import com.academy.paybridge.shared.config.AccessLogFilter;
 import com.academy.paybridge.shared.config.RequestIdFilter;
@@ -13,8 +14,9 @@ import org.springframework.core.Ordered;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The ordinary tests build a MockMvc with no filters, so this checks that the RUNNING application really installs the
- * security filters, and in the right order. (The order matters: you must know who is calling before you limit them.)
+ * Checks that the RUNNING application installs all security and tracing filters in the exact required order:
+ * RequestId (+0) -> AccessLog (+1) -> CORS (+2) -> ApiKeyAuth (+3) -> RateLimit (+4).
+ * (CORS must run before auth so that preflight OPTIONS requests are answered without demanding an API key).
  */
 class SecurityFilterRegistrationTest extends AbstractIntegrationTest {
 
@@ -25,21 +27,26 @@ class SecurityFilterRegistrationTest extends AbstractIntegrationTest {
     private FilterRegistrationBean<AccessLogFilter> accessLogRegistration;
 
     @Autowired
+    private FilterRegistrationBean<CorsFilter> corsRegistration;
+
+    @Autowired
     private FilterRegistrationBean<ApiKeyAuthFilter> authRegistration;
 
     @Autowired
     private FilterRegistrationBean<RateLimitFilter> rateLimitRegistration;
 
     @Test
-    void theFourFiltersRunInTheRightOrder() {
+    void theFiveFiltersRunInTheRightOrder() {
         assertThat(requestIdRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE);
         assertThat(accessLogRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE + 1);
-        assertThat(authRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE + 2);
-        assertThat(rateLimitRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE + 3);
+        assertThat(corsRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE + 2);
+        assertThat(authRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE + 3);
+        assertThat(rateLimitRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE + 4);
     }
 
     @Test
     void theFiltersAreTheRealClassesNotProxies() {
+        assertThat(corsRegistration.getFilter()).isExactlyInstanceOf(CorsFilter.class);
         assertThat(authRegistration.getFilter()).isExactlyInstanceOf(ApiKeyAuthFilter.class);
         assertThat(rateLimitRegistration.getFilter()).isExactlyInstanceOf(RateLimitFilter.class);
     }

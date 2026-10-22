@@ -45,6 +45,9 @@ services:
         value: "true"
       - key: PAYBRIDGE_GATEWAY
         value: fake
+      # CORS allow-list for the front-end demo console (Vercel and localhost)
+      - key: PAYBRIDGE_CORS_ALLOWED_ORIGINS
+        value: "https://paybridge-frontend.vercel.app,http://localhost:5173"
 
       # The first admin key. YOU choose it; Render prompts for it when the Blueprint is created.
       # It must be 32 or more characters of letters, digits, _ or - ONLY.

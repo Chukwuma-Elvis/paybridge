@@ -1209,3 +1209,19 @@ Built `PaystackTransferGateway` behind the existing `TransferGateway` interface 
 * Added `render.yaml` (free tier) and `render.paid.yaml`. Free-tier limits measured at 0.1 CPU: start about 4-5 minutes with `-XX:TieredStopAtLevel=1` (563 s without).
 * Found by a real deploy attempt: if `PAYBRIDGE_ADMIN_API_KEY` is empty the app starts but all protected endpoints answer 401; fixed by setting the variable and redeploying.
 * Added `demo/demo.sh`.
+
+
+---
+
+## Step 29: Back-end CORS enabler for the Demo Console
+
+* Added CorsFilter at Ordered.HIGHEST_PRECEDENCE + 2, running after RequestIdFilter and AccessLogFilter, and before ApiKeyAuthFilter (+ 3) and RateLimitFilter (+ 4).
+* Bound paybridge.security.cors.allowed-origins to environment variable PAYBRIDGE_CORS_ALLOWED_ORIGINS. Default is empty (deny-by-default; no cross-origin access allowed until explicitly configured).
+* Handles browser HTTP OPTIONS preflight checks directly with 200 OK, Access-Control-Allow-Origin: <origin>, Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, Access-Control-Allow-Headers: Content-Type, X-API-Key, Idempotency-Key, X-Request-Id, and Access-Control-Max-Age: 3600.
+* Injected defence-in-depth in ApiKeyAuthFilter to ensure preflight OPTIONS requests never trigger 401 Unauthorized (browsers cannot send credentials on preflight).
+* Preflight requests bypass RateLimitFilter so browser security checks do not burn caller token budgets.
+* Exposes response headers X-Request-Id (for client-side log dock correlation) and Retry-After (for HTTP 429 countdown display).
+* Updated 
+ender.yaml and 
+ender.paid.yaml to prompt for PAYBRIDGE_CORS_ALLOWED_ORIGINS.
+* Verified with CorsFilterTest (4 unit tests), SecurityFilterRegistrationTest (exact five-filter order), and full SecurityFilterTest suite (all passing).
