@@ -84,4 +84,20 @@ class CorsFilterTest {
         assertThat(response.getHeader("Access-Control-Expose-Headers")).contains("X-Request-Id", "Retry-After");
         verify(chain).doFilter(request, response); // actual requests proceed to authentication
     }
+
+    @Test
+    void originMatchingToleratesTrailingSlashesAndWildcardSuffix() throws ServletException, IOException {
+        SecurityProperties.Cors cors = new SecurityProperties.Cors("https://paybridge-frontend-chi.vercel.app/,*.vercel.app");
+        CorsFilter filter = new CorsFilter(cors);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/actuator/health");
+        request.addHeader("Origin", "https://paybridge-frontend-chi.vercel.app");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo("https://paybridge-frontend-chi.vercel.app");
+    }
 }

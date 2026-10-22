@@ -64,8 +64,18 @@ public class CorsFilter extends OncePerRequestFilter {
     }
 
     private boolean isOriginAllowed(String origin, List<String> allowedOrigins) {
+        String cleanOrigin = origin.endsWith("/") ? origin.substring(0, origin.length() - 1) : origin;
         for (String allowed : allowedOrigins) {
-            if ("*".equals(allowed) || allowed.equalsIgnoreCase(origin)) {
+            if ("*".equals(allowed)) {
+                return true;
+            }
+            String cleanAllowed = allowed.endsWith("/") ? allowed.substring(0, allowed.length() - 1) : allowed;
+            if (cleanAllowed.startsWith("*.")) {
+                String suffix = cleanAllowed.substring(1);
+                if (cleanOrigin.endsWith(suffix) && (cleanOrigin.startsWith("https://") || cleanOrigin.startsWith("http://"))) {
+                    return true;
+                }
+            } else if (cleanAllowed.equalsIgnoreCase(cleanOrigin)) {
                 return true;
             }
         }
