@@ -1,4 +1,4 @@
-package com.academy.paybridge.compliance.service;
+package com.academy.paybridge.compliance.api;
 
 import java.time.LocalDate;
 import java.util.List;

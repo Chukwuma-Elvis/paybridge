@@ -1,6 +1,7 @@
 package com.academy.paybridge.compliance.service;
 
 import com.academy.paybridge.compliance.api.Party;
+import com.academy.paybridge.compliance.api.WatchlistEntry;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -29,10 +30,24 @@ public class FakeScreeningProvider implements ScreeningProvider {
         return all;
     }
 
+    @Override
+    public List<WatchlistEntry> allEntries() {
+        List<WatchlistEntry> all = new java.util.ArrayList<>(BUILT_IN);
+        all.addAll(added);
+        return all;
+    }
+
+    @Override
+    public WatchlistEntry addEntry(WatchlistEntry entry) {
+        added.add(entry);
+        return entry;
+    }
+
     public void add(WatchlistEntry entry) {
         added.add(entry);
     }
 
+    @Override
     public void reset() {
         added.clear();
     }

@@ -8,6 +8,7 @@ import com.academy.paybridge.compliance.api.LimitStatus;
 import com.academy.paybridge.compliance.api.Party;
 import com.academy.paybridge.compliance.api.ScreeningResult;
 import com.academy.paybridge.compliance.api.UsdLimitScope;
+import com.academy.paybridge.compliance.api.WatchlistEntry;
 import com.academy.paybridge.customer.api.CustomerApi;
 import com.academy.paybridge.customer.api.CustomerSummary;
 import com.academy.paybridge.shared.exception.ErrorCode;
@@ -156,6 +157,22 @@ public class ComplianceService implements ComplianceApi {
     @Override
     public CaseView decideCase(UUID caseId, CaseDecision decision, String reason, String decidedBy) {
         return screening.decideCase(caseId, decision, reason, decidedBy);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WatchlistEntry> listWatchlist() {
+        return screening.listWatchlist();
+    }
+
+    @Override
+    public WatchlistEntry addWatchlistEntry(WatchlistEntry entry) {
+        return screening.addWatchlistEntry(entry);
+    }
+
+    @Override
+    public void resetWatchlist() {
+        screening.resetWatchlist();
     }
 
     private ComplianceProperties.Limit limitFor(CustomerSummary customer) {

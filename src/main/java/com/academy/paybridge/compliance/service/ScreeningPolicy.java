@@ -2,6 +2,7 @@ package com.academy.paybridge.compliance.service;
 
 import com.academy.paybridge.compliance.api.Party;
 import com.academy.paybridge.compliance.api.ScreeningOutcome;
+import com.academy.paybridge.compliance.api.WatchlistEntry;
 
 import java.util.ArrayList;
 import java.util.List;

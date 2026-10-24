@@ -1,6 +1,7 @@
 package com.academy.paybridge.compliance.service;
 
 import com.academy.paybridge.compliance.api.Party;
+import com.academy.paybridge.compliance.api.WatchlistEntry;
 
 import java.util.List;
 
@@ -13,4 +14,15 @@ public interface ScreeningProvider {
 
     /** Entries worth comparing with this party. A simple source may return its whole list. */
     List<WatchlistEntry> candidatesFor(Party party);
+
+    default List<WatchlistEntry> allEntries() {
+        return candidatesFor(new Party("", null, null));
+    }
+
+    default WatchlistEntry addEntry(WatchlistEntry entry) {
+        throw new UnsupportedOperationException("Adding watchlist entries is not supported by this provider");
+    }
+
+    default void reset() {
+    }
 }

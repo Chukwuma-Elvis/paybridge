@@ -6,6 +6,7 @@ import com.academy.paybridge.compliance.api.CaseView;
 import com.academy.paybridge.compliance.api.Party;
 import com.academy.paybridge.compliance.api.ScreeningOutcome;
 import com.academy.paybridge.compliance.api.ScreeningResult;
+import com.academy.paybridge.compliance.api.WatchlistEntry;
 import com.academy.paybridge.shared.exception.ErrorCode;
 import com.academy.paybridge.shared.exception.PayBridgeException;
 import com.academy.paybridge.shared.exception.ResourceNotFoundException;
@@ -169,5 +170,17 @@ class ScreeningService {
     private Optional<CaseView> findCase(String contextRef, String partyRole) {
         return jdbc.query("select * from screening_case where context_ref = ? and party_role = ?", CASE_ROW, contextRef, partyRole)
                 .stream().findFirst();
+    }
+
+    List<WatchlistEntry> listWatchlist() {
+        return provider.allEntries();
+    }
+
+    WatchlistEntry addWatchlistEntry(WatchlistEntry entry) {
+        return provider.addEntry(entry);
+    }
+
+    void resetWatchlist() {
+        provider.reset();
     }
 }

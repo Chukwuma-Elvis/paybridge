@@ -72,4 +72,13 @@ public interface ComplianceApi {
      * decision on a decided case is refused. A BLOCK case can only be rejected.
      */
     CaseView decideCase(UUID caseId, CaseDecision decision, String reason, String decidedBy);
+
+    /** Returns all active screening watchlist entries (both built-in synthetic entries and dynamically added entries). */
+    List<WatchlistEntry> listWatchlist();
+
+    /** Adds a new synthetic or custom watchlist entry to the active screening list. */
+    WatchlistEntry addWatchlistEntry(WatchlistEntry entry);
+
+    /** Resets the watchlist by clearing all custom added entries, leaving only the built-in synthetic entries. */
+    void resetWatchlist();
 }

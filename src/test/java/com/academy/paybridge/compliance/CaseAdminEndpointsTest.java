@@ -86,4 +86,36 @@ class CaseAdminEndpointsTest extends AbstractSecurityTest {
     void anUnknownCaseIsNotFound() throws Exception {
         mvc.perform(get("/api/admin/compliance/cases/" + UUID.randomUUID()).header(KEY, admin)).andExpect(status().isNotFound());
     }
+
+    @Test
+    void canViewAndAddToWatchlistAndTriggerScreeningHold() throws Exception {
+        // 1. List watchlist
+        mvc.perform(get("/api/compliance/watchlist").header(KEY, client))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.names contains 'Alina Samplova')]").exists());
+
+        mvc.perform(get("/api/admin/compliance/watchlist").header(KEY, admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.names contains 'Alina Samplova')]").exists());
+
+        // 2. Add new entry
+        mvc.perform(post("/api/compliance/watchlist").header(KEY, client)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Viktor Smirnov\",\"country\":\"RU\",\"listName\":\"SPECIAL-TEST\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.names[0]").value("Viktor Smirnov"))
+                .andExpect(jsonPath("$.country").value("RU"));
+
+        // 3. Screening a party with this new name now flags REVIEW / opens a case!
+        UUID newCaseId = compliance.screen(new Party("Viktor Smirnov", "RU", null), "SENDER", "CTX-" + UUID.randomUUID()).caseId();
+        org.assertj.core.api.Assertions.assertThat(newCaseId).isNotNull();
+
+        // 4. Reset returns to default
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/compliance/watchlist").header(KEY, client))
+                .andExpect(status().isNoContent());
+
+        mvc.perform(get("/api/compliance/watchlist").header(KEY, client))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.names contains 'Viktor Smirnov')]").doesNotExist());
+    }
 }
