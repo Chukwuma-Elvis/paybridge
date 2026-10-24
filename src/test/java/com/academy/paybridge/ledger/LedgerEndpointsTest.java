@@ -63,4 +63,14 @@ class LedgerEndpointsTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/accounts/" + UUID.randomUUID() + "/entries"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void devResetPurgesAccountsAndKeys() throws Exception {
+        UUID account = newAccount();
+        fundAccount(account, 1_000);
+
+        mockMvc.perform(post("/api/dev/reset"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+    }
 }

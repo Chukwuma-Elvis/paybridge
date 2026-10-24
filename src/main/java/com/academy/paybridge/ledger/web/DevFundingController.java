@@ -72,55 +72,70 @@ public class DevFundingController {
     @PostMapping("/reset")
     @Transactional
     public Map<String, Object> resetDemoData() {
-        int deletedKeys = jdbc.update("DELETE FROM api_key WHERE name != 'bootstrap-admin' AND prefix != '(operator)'");
+        int deletedKeys = jdbc.update("DELETE FROM api_key WHERE name != 'bootstrap-admin' AND key_prefix != '(operator)'");
 
-        // Break cyclic / foreign key dependencies before deletion
-        jdbc.update("UPDATE journal_entry SET reverses_entry_id = NULL");
+        // Temporarily disable immutability triggers for sandbox purge
+        jdbc.execute("ALTER TABLE journal_entry DISABLE TRIGGER trg_journal_entry_append_only");
+        jdbc.execute("ALTER TABLE ledger_line DISABLE TRIGGER trg_ledger_line_append_only");
+        jdbc.execute("ALTER TABLE remittance_event DISABLE TRIGGER trg_remittance_event_append_only");
+        jdbc.execute("ALTER TABLE settlement_batch_line DISABLE TRIGGER trg_settlement_batch_line_append_only");
+        jdbc.execute("ALTER TABLE screening_case DISABLE TRIGGER trg_screening_case_guard");
 
-        // Clear dependent domain records
-        jdbc.update("DELETE FROM settlement_break");
-        jdbc.update("DELETE FROM settlement_batch_line");
-        jdbc.update("DELETE FROM settlement_statement_line");
-        jdbc.update("DELETE FROM settlement_statement");
-        jdbc.update("DELETE FROM settlement_batch");
-        jdbc.update("DELETE FROM remittance_event");
-        jdbc.update("DELETE FROM remittance_claim");
-        jdbc.update("DELETE FROM remittance");
-        jdbc.update("DELETE FROM system_payout");
-        jdbc.update("DELETE FROM fx_conversion");
-        jdbc.update("DELETE FROM fx_quote");
-        jdbc.update("DELETE FROM velocity_event");
-        jdbc.update("DELETE FROM usd_usage");
-        jdbc.update("DELETE FROM screening_case");
-        jdbc.update("DELETE FROM transfer_outbox");
-        jdbc.update("DELETE FROM idempotency_key");
-        jdbc.update("DELETE FROM transfer");
-        jdbc.update("DELETE FROM webhook_event");
-        jdbc.update("DELETE FROM notification");
-        jdbc.update("DELETE FROM daily_usage");
-        jdbc.update("DELETE FROM beneficiary");
-        jdbc.update("DELETE FROM ledger_line");
-        jdbc.update("DELETE FROM journal_entry");
-
-        // Delete customer accounts and reset system account balances
-        int deletedAccounts = jdbc.update("DELETE FROM account WHERE account_type = 'CUSTOMER'");
-        jdbc.update("UPDATE account SET balance_minor = 0 WHERE account_type = 'SYSTEM'");
-
-        // Delete customers
-        int deletedCustomers = jdbc.update("DELETE FROM customer");
-
-        // Reset account number sequence
         try {
-            jdbc.execute("ALTER SEQUENCE account_number_seq RESTART WITH 100000001");
-        } catch (Exception ignored) {
-        }
+            // Break cyclic / foreign key dependencies before deletion
+            jdbc.update("UPDATE journal_entry SET reverses_entry_id = NULL");
 
-        return Map.of(
-                "status", "SUCCESS",
-                "deletedCustomers", deletedCustomers,
-                "deletedAccounts", deletedAccounts,
-                "deletedApiKeys", deletedKeys,
-                "preservedKey", "bootstrap-admin"
-        );
+            // Clear dependent domain records
+            jdbc.update("DELETE FROM settlement_break");
+            jdbc.update("DELETE FROM settlement_batch_line");
+            jdbc.update("DELETE FROM settlement_statement_line");
+            jdbc.update("DELETE FROM settlement_statement");
+            jdbc.update("DELETE FROM settlement_batch");
+            jdbc.update("DELETE FROM remittance_event");
+            jdbc.update("DELETE FROM remittance_claim");
+            jdbc.update("DELETE FROM remittance");
+            jdbc.update("DELETE FROM system_payout");
+            jdbc.update("DELETE FROM fx_conversion");
+            jdbc.update("DELETE FROM fx_quote");
+            jdbc.update("DELETE FROM velocity_event");
+            jdbc.update("DELETE FROM usd_usage");
+            jdbc.update("DELETE FROM screening_case");
+            jdbc.update("DELETE FROM transfer_outbox");
+            jdbc.update("DELETE FROM idempotency_key");
+            jdbc.update("DELETE FROM transfer");
+            jdbc.update("DELETE FROM webhook_event");
+            jdbc.update("DELETE FROM notification");
+            jdbc.update("DELETE FROM daily_usage");
+            jdbc.update("DELETE FROM beneficiary");
+            jdbc.update("DELETE FROM ledger_line");
+            jdbc.update("DELETE FROM journal_entry");
+
+            // Delete customer accounts and reset system account balances
+            int deletedAccounts = jdbc.update("DELETE FROM account WHERE account_type = 'CUSTOMER'");
+            jdbc.update("UPDATE account SET balance_minor = 0 WHERE account_type = 'SYSTEM'");
+
+            // Delete customers
+            int deletedCustomers = jdbc.update("DELETE FROM customer");
+
+            // Reset account number sequence
+            try {
+                jdbc.execute("ALTER SEQUENCE account_number_seq RESTART WITH 100000001");
+            } catch (Exception ignored) {
+            }
+
+            return Map.of(
+                    "status", "SUCCESS",
+                    "deletedCustomers", deletedCustomers,
+                    "deletedAccounts", deletedAccounts,
+                    "deletedApiKeys", deletedKeys,
+                    "preservedKey", "bootstrap-admin"
+            );
+        } finally {
+            jdbc.execute("ALTER TABLE journal_entry ENABLE TRIGGER trg_journal_entry_append_only");
+            jdbc.execute("ALTER TABLE ledger_line ENABLE TRIGGER trg_ledger_line_append_only");
+            jdbc.execute("ALTER TABLE remittance_event ENABLE TRIGGER trg_remittance_event_append_only");
+            jdbc.execute("ALTER TABLE settlement_batch_line ENABLE TRIGGER trg_settlement_batch_line_append_only");
+            jdbc.execute("ALTER TABLE screening_case ENABLE TRIGGER trg_screening_case_guard");
+        }
     }
 }
