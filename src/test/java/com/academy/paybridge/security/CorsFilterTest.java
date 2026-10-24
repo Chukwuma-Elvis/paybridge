@@ -30,7 +30,7 @@ class CorsFilterTest {
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo("https://paybridge-frontend.vercel.app");
         assertThat(response.getHeader("Vary")).isEqualTo("Origin");
-        assertThat(response.getHeader("Access-Control-Allow-Methods")).contains("GET", "POST", "PUT", "DELETE", "OPTIONS");
+        assertThat(response.getHeader("Access-Control-Allow-Methods")).contains("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
         assertThat(response.getHeader("Access-Control-Allow-Headers")).contains("X-API-Key", "Idempotency-Key", "X-Request-Id");
         assertThat(response.getHeader("Access-Control-Expose-Headers")).contains("X-Request-Id", "Retry-After");
         verifyNoInteractions(chain); // preflight must not hit downstream filters

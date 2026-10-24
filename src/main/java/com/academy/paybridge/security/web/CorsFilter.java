@@ -25,8 +25,8 @@ import java.util.List;
  */
 public class CorsFilter extends OncePerRequestFilter {
 
-    public static final String ALLOWED_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
-    public static final String ALLOWED_HEADERS = "Content-Type, X-API-Key, Idempotency-Key, X-Request-Id";
+    public static final String ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+    public static final String ALLOWED_HEADERS = "Content-Type, X-API-Key, Idempotency-Key, X-Request-Id, Accept, Authorization";
     public static final String EXPOSED_HEADERS = "X-Request-Id, Retry-After";
     public static final String MAX_AGE_SECONDS = "3600";
 
