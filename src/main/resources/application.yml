@@ -133,9 +133,9 @@ paybridge:
     # A partner with an empty secret is switched off. The partner code is lower case, 2 to 16 letters, digits, - or _.
     partners:
       fakepartner:
-        secret-key: ${FAKEPARTNER_SECRET:}
+        secret-key: ${FAKEPARTNER_SECRET:test-partner-secret-not-a-real-key}
       us_partner:
-        secret-key: ${US_PARTNER_SECRET:}
+        secret-key: ${US_PARTNER_SECRET:test-partner-secret-not-a-real-key}
   # Remittance (Steps 19 to 23): USD collected abroad by a corridor partner, converted, and paid out in naira.
   remittance:
     partners:
