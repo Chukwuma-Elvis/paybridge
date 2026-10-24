@@ -134,10 +134,13 @@ paybridge:
     partners:
       fakepartner:
         secret-key: ${FAKEPARTNER_SECRET:}
+      us_partner:
+        secret-key: ${US_PARTNER_SECRET:}
   # Remittance (Steps 19 to 23): USD collected abroad by a corridor partner, converted, and paid out in naira.
   remittance:
     partners:
       - fakepartner                   # partners allowed to send remittances; each also needs a webhook secret above
+      - us_partner
     funding-window: 24h               # the partner must confirm the sender money within this long, or the remittance fails
     screening-gate-enabled: true      # DEVELOPMENT ONLY: false skips screening and USD limits. Never turn it off for real use.
     processor:
@@ -153,6 +156,7 @@ paybridge:
   settlement:
     partners:
       - fakepartner
+      - us_partner
     tolerance:
       amount-minor: 1                 # two amounts this close (in cents) count as the same
       date-days: 1                    # two dates this close count as the same day
